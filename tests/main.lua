@@ -5,6 +5,7 @@
 local MODULES = {
     "tests/test_geom",
     "tests/test_rig",
+    "tests/test_session",
 }
 
 local function runModule(name)
