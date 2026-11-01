@@ -4,6 +4,7 @@
 
 local MODULES = {
     "tests/test_geom",
+    "tests/test_rig",
 }
 
 local function runModule(name)
