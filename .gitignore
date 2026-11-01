@@ -1,0 +1,4 @@
+*.love
+*.zip
+/tmp/
+.DS_Store
