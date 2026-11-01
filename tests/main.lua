@@ -3,6 +3,7 @@
 -- Exit code 0 = all passed, 1 = at least one failure.
 
 local MODULES = {
+    "tests/test_smoke",
     "tests/test_geom",
     "tests/test_rig",
     "tests/test_session",
