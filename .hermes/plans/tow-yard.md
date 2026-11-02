@@ -177,4 +177,9 @@ the sim runs on a fixed 1/120 accumulator and only time-dilates below 10 fps —
   (`~/.local/share/love/tow-yard/`).
 - Physical numbers cross-checked against an independent float64 integration of
   the same equations before any of it was written to Lua.
-- **Not** verified: actual driving feel. That needs a human at the keyboard.
+- Playtest 1 (keyboard): pedal felt dead, fixed by the response calibration in §9.
+- Playtest 2 (gamepad, separate machine): **"not easy but can be learnt"** — the
+  mechanic reads and the skill ceiling exists. The reverse is doing its job.
+  Open feel questions from that session: how much of the difficulty is the
+  caravan's instability (good, that is the game) versus steering sensitivity on
+  a stick (a tuning problem), and whether the guide arc was on.
