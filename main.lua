@@ -1,6 +1,7 @@
 -- Thin shell: love callbacks, input wiring, camera, fixed-timestep loop.
 -- All game rules live in lib/ and are covered by `love tests`.
 
+local rig = require("lib.rig")
 local session = require("lib.session")
 local levels = require("lib.levels")
 local input = require("lib.input")
@@ -69,7 +70,7 @@ function love.update(dt)
     if steps >= MAX_STEPS then game.acc = 0 end
 
     local impact = game.s.bump_flash > 0.30 and 1 or nil
-    input.rumble(game.input, require("lib.rig").art(game.s.rig), impact)
+    input.rumble(game.input, rig.art(game.s.rig), impact)
 end
 
 function love.draw()
@@ -91,13 +92,21 @@ function love.draw()
             love.graphics.captureScreenshot("smoke-scene.png")
             print("SAVE DIR " .. love.filesystem.getSaveDirectory())
         elseif smoke.frames == 2 then
+            -- full lock: the frame that has to show steered wheels and rays
+            game.input.steer = 0.8
+            game.s.rig.steer = rig.CAR.max_steer * 0.8
+            game.s.rig.ph = game.s.rig.th - math.rad(12)
+        elseif smoke.frames == 3 then
+            love.graphics.captureScreenshot("smoke-steer.png")
+            game.input.steer = 0
+        elseif smoke.frames == 4 then
             game.s.parked = true
             game.s.t = 12.5
             game.s.final = { time = 12.5, bumps = 0, angle_err = 1.2 }
-        elseif smoke.frames == 3 then
+        elseif smoke.frames == 5 then
             love.graphics.captureScreenshot("smoke-parked.png")
             game.debug = true
-        elseif smoke.frames >= 4 then
+        elseif smoke.frames >= 6 then
             print("SMOKE OK")
             love.event.quit(0)
         end

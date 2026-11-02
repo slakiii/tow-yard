@@ -21,6 +21,8 @@ D.C = {
     van_dark = { 0.62, 0.58, 0.48 },
     cone = { 0.95, 0.55, 0.15 },
     guide = { 0.35, 0.75, 0.95 },
+    ray = { 0.75, 0.80, 0.88 },
+    tyre = { 0.16, 0.16, 0.18 },
     text = { 0.90, 0.92, 0.95 },
     dim = { 0.55, 0.58, 0.63 },
     warn = { 0.95, 0.32, 0.26 },
@@ -141,14 +143,38 @@ function D.scene(lvl, s, opts)
     set(D.C.car_dark)
     love.graphics.setLineWidth(0.07)
     love.graphics.polygon("line", flat(car))
+    -- windscreen sits ahead of the front axle, on the nose
     set(D.C.glass, 0.55)
-    love.graphics.polygon("fill", rot_rect(s.rig.x, s.rig.y, s.rig.th, 0.35, 0, 1.1, 1.45))
-    -- wheels, steered on the front axle
-    set(D.C.car_dark)
+    love.graphics.polygon("fill", rot_rect(s.rig.x, s.rig.y, s.rig.th, rig.CAR.wheelbase - 0.1, 0, 0.55, 1.45))
+    set(D.C.glass, 0.35)
+    love.graphics.polygon("fill", rot_rect(s.rig.x, s.rig.y, s.rig.th, 0, 0, 0.75, 1.45))
+
+    -- headlights: the nose has to read as the front at 15 px/m
+    set(D.C.ray, 0.85)
     for _, side in ipairs({ 1, -1 }) do
-        love.graphics.polygon("fill", rot_rect(s.rig.x, s.rig.y, s.rig.th, 0, side * 0.86, 0.62, 0.26))
         love.graphics.polygon("fill",
-            rot_rect(s.rig.x, s.rig.y, s.rig.th + s.rig.steer, rig.CAR.wheelbase, side * 0.86, 0.62, 0.26))
+            rot_rect(s.rig.x, s.rig.y, s.rig.th, rig.CAR.front_x - 0.12, side * 0.55, 0.16, 0.34))
+    end
+
+    -- wheels: rear fixed, front steered about their own centre (rotating about
+    -- the car origin would slide them sideways out from under the body)
+    set(D.C.tyre)
+    for _, side in ipairs({ 1, -1 }) do
+        love.graphics.polygon("fill", rot_rect(s.rig.x, s.rig.y, s.rig.th, 0, side * 0.88, 0.62, 0.30))
+    end
+    local steer_rays = math.abs(s.rig.steer) > math.rad(1)
+    for _, side in ipairs({ 1, -1 }) do
+        local wx, wy = at(s.rig.x, s.rig.y, s.rig.th, rig.CAR.wheelbase, side * 0.86)
+        set(D.C.tyre)
+        love.graphics.polygon("fill", rot_rect(wx, wy, s.rig.th + s.rig.steer, 0, 0, 0.62, 0.30))
+        -- the wheel plane, extended: the two rays converge on the turn centre,
+        -- so the angle is legible at this scale instead of being 3 px of rubber
+        if steer_rays then
+            local dx, dy = math.cos(s.rig.th + s.rig.steer), math.sin(s.rig.th + s.rig.steer)
+            set(D.C.ray, 0.45)
+            love.graphics.setLineWidth(0.05)
+            love.graphics.line(wx, wy, wx + dx * 2.8, wy + dy * 2.8)
+        end
     end
 
     -- coupling
@@ -206,6 +232,26 @@ function D.hud(s, game)
     love.graphics.rectangle("fill", bx + bw * (72 / 75), by - 5, 3, bh + 10)
     love.graphics.setFont(fonts.small)
     love.graphics.print(string.format("articulation %.0f deg", art), bx, by - 22)
+
+    -- steering gauge: which way the wheels point, and are they straight
+    local gx, gw, gh = bx + bw + 40, 170, bh
+    set(D.C.wall, 0.9)
+    love.graphics.rectangle("fill", gx, by, gw, gh, 3)
+    local gcx = gx + gw / 2
+    local frac = s.rig.steer / rig.CAR.max_steer
+    set(math.abs(frac) > 0.9 and D.C.cone or D.C.good)
+    if math.abs(frac) > 0.01 then
+        local dx = (gw / 2 - 2) * frac
+        love.graphics.rectangle("fill", math.min(gcx, gcx + dx), by, math.abs(dx), gh, 3)
+    end
+    set(D.C.text, 0.7)
+    love.graphics.rectangle("fill", gcx - 1, by - 3, 2, gh + 6)
+    local deg = math.abs(math.deg(s.rig.steer))
+    local side = math.abs(frac) < 0.06 and "straight"
+        or (s.rig.steer > 0 and "left" or "right")
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim)
+    love.graphics.print(string.format("wheels %.0f %s", deg, side), gx, by - 22)
 
     -- control hints
     local pad = game.input and game.input.last_device == "gamepad"
