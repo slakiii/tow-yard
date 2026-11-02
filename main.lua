@@ -16,6 +16,7 @@ local game = {
     index = 1,
     guide = true,
     debug = false,
+    paused = false,
     acc = 0,
     input = input.new_state(),
 }
@@ -57,8 +58,14 @@ function love.update(dt)
         return
     end
     if acts.guide then game.guide = not game.guide end
+    if acts.pause then game.paused = not game.paused end
 
     input.poll(game.input)
+
+    if game.paused then
+        input.rumble(game.input, 0, nil)
+        return
+    end
 
     game.acc = game.acc + math.min(dt, 0.1)
     local steps = 0
@@ -115,7 +122,10 @@ function love.draw()
                 game.level.bay.angle + math.pi)
         elseif smoke.frames == 7 then
             love.graphics.captureScreenshot("smoke-wrongway.png")
-        elseif smoke.frames >= 8 then
+            game.paused = true
+        elseif smoke.frames == 8 then
+            love.graphics.captureScreenshot("smoke-paused.png")
+        elseif smoke.frames >= 9 then
             print("SMOKE OK")
             love.event.quit(0)
         end
@@ -129,6 +139,8 @@ function love.keypressed(key)
         load_level(game.index)
     elseif key == "g" then
         game.guide = not game.guide
+    elseif key == "p" then
+        game.paused = not game.paused
     elseif key == "f1" then
         game.debug = not game.debug
     elseif key == "n" and game.s.parked then

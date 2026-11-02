@@ -8,6 +8,7 @@ local M = {}
 
 M.DEADZONE = 0.12
 M.EXPO = 1.4
+M.TRIGGER_MIN = 0.02   -- ignore trigger resting noise (some pads idle at -1)
 
 M.KEYS = {
     forward = { "w", "up" },
@@ -57,6 +58,37 @@ local function any_down(list)
     return false
 end
 
+-- Merge one pad's axes and buttons into a normalised input, no love.* calls so
+-- the mapping can be tested without hardware. The stronger of the two devices
+-- wins per axis, so the pad and the keyboard can be held at the same time.
+function M.merge_pad(input, pad)
+    input = input or { steer = 0, throttle = 0, brake = 0, handbrake = false }
+    local steer = M.steer_from_stick(pad.leftx or 0)
+    if steer == 0 then
+        -- D-pad is a digital fallback for pads without a usable stick
+        steer = (pad.dpleft and 1 or 0) - (pad.dpright and 1 or 0)
+    end
+    if steer ~= 0 then
+        input.steer = steer
+        input.last_device = "gamepad"
+    end
+    local rt = math.max(0, pad.rt or 0)
+    local lt = math.max(0, pad.lt or 0)
+    if rt > M.TRIGGER_MIN then
+        input.throttle = math.max(input.throttle or 0, rt)
+        input.last_device = "gamepad"
+    end
+    if lt > M.TRIGGER_MIN then
+        input.brake = math.max(input.brake or 0, lt)
+        input.last_device = "gamepad"
+    end
+    if pad.handbrake then
+        input.handbrake = true
+        input.last_device = "gamepad"
+    end
+    return input
+end
+
 function M.new_state()
     return {
         steer = 0, throttle = 0, brake = 0, handbrake = false,
@@ -83,23 +115,37 @@ function M.poll(st)
     local throttle = any_down(M.KEYS.forward) and 1 or 0
     local brake = any_down(M.KEYS.backward) and 1 or 0
     local handbrake = any_down(M.KEYS.handbrake)
-    local device = (steer ~= 0 or throttle > 0 or brake > 0 or handbrake) and "keyboard" or st.last_device
+    local touched = steer ~= 0 or throttle > 0 or brake > 0 or handbrake
+
+    local input = {
+        steer = steer, throttle = throttle, brake = brake, handbrake = handbrake,
+        last_device = touched and "keyboard" or st.last_device,
+    }
 
     local js = st.joystick
     if js and js:isConnected() and js:isGamepad() then
-        local pad_steer = M.steer_from_stick(js:getGamepadAxis("leftx"))
-        local rt = math.max(0, js:getGamepadAxis("triggerright"))
-        local lt = math.max(0, js:getGamepadAxis("triggerleft"))
-
-        if math.abs(pad_steer) > 0 then steer = pad_steer device = "gamepad" end
-        if rt > 0.02 then throttle = math.max(throttle, rt) device = "gamepad" end
-        if lt > 0.02 then brake = math.max(brake, lt) device = "gamepad" end
-        if js:isGamepadDown(M.PAD.handbrake) then handbrake = true device = "gamepad" end
+        M.merge_pad(input, {
+            leftx = js:getGamepadAxis("leftx"),
+            lt = js:getGamepadAxis("triggerleft"),
+            rt = js:getGamepadAxis("triggerright"),
+            dpleft = js:isGamepadDown("dpleft"),
+            dpright = js:isGamepadDown("dpright"),
+            handbrake = js:isGamepadDown(M.PAD.handbrake),
+        })
     end
 
-    st.steer, st.throttle, st.brake, st.handbrake = steer, throttle, brake, handbrake
-    st.last_device = device
+    st.steer, st.throttle, st.brake, st.handbrake = input.steer, input.throttle, input.brake, input.handbrake
+    st.last_device = input.last_device or st.last_device
     return st
+end
+
+-- Human-readable state of the attached pad, for the debug overlay: "is the
+-- controller even seen?" is the first question of every controller bug report.
+function M.pad_status(st)
+    local js = st.joystick
+    if not js or not js:isConnected() then return "no joystick" end
+    if not js:isGamepad() then return js:getName() .. " (not a gamepad)" end
+    return js:getName() .. (js:isVibrationSupported() and " +rumble" or "")
 end
 
 -- Edge-triggered pad buttons (keyboard equivalents are handled in love.keypressed).

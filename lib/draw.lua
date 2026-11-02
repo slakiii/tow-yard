@@ -4,6 +4,7 @@
 local geom = require("lib.geom")
 local rig = require("lib.rig")
 local session = require("lib.session")
+local input = require("lib.input")
 
 local D = {}
 
@@ -309,10 +310,19 @@ function D.hud(s, game)
     -- control hints
     local pad = game.input and game.input.last_device == "gamepad"
     local hint = pad
-        and "LS steer   RT forward   LT brake/reverse   A handbrake   Y guide   B reset   Start pause"
-        or "WASD drive   Space handbrake   G guide   R reset   F1 debug   Esc quit"
+        and "LS/D-pad steer   RT forward   LT brake/reverse   A handbrake   Y guide   B reset   Start pause"
+        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   Esc quit"
     set(D.C.dim, 0.9)
     love.graphics.print(hint, 24, H - 26)
+
+    if game.paused then
+        love.graphics.setFont(fonts.mid)
+        set(D.C.text)
+        love.graphics.print("PAUSED", W / 2 - 34, H / 2 - 10)
+        love.graphics.setFont(fonts.small)
+        set(D.C.dim)
+        love.graphics.print("P or Start to resume", W / 2 - 62, H / 2 + 16)
+    end
 end
 
 function D.overlay(s, game)
@@ -356,6 +366,7 @@ function D.debug(s, game)
         string.format("bump %s   jackknife %.0f deg", tostring(s.last_bump), math.deg(rig.TUNE.jackknife)),
         string.format("%d fps   dt %.1f ms   %d draw calls", love.timer.getFPS(),
             love.timer.getDelta() * 1000, love.graphics.getStats().drawcalls),
+        "pad: " .. input.pad_status(game.input or {}),
     }
     love.graphics.setFont(fonts.small)
     for i, line in ipairs(lines) do

@@ -12,10 +12,17 @@ love . --smoke    # render every screen once and quit (boot check)
 ```
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
-`R` reset, `F1` debug, `Esc` quit.
-Gamepad: left stick steer, `RT` forward, `LT` brake then reverse, `A`
-handbrake, `Y` guide, `B` reset, `Start` pause. Rumble warns you as the
-articulation approaches the jackknife angle.
+`R` reset, `P` pause, `F1` debug, `Esc` quit.
+
+Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
+`D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,
+`Y` guide arc, `B` reset, `Start` pause. Rumble warns you as the articulation
+approaches the jackknife angle. `F1` shows the detected pad and whether it
+reports rumble support.
+
+The two devices are live at the same time and merge per axis (strongest input
+wins), and both feed the same rate-limited steering model — the pad only
+supplies finer targets, never different physics.
 
 Levels: `Tab` cycles. Three are shipped; see `.hermes/plans/tow-yard.md` for the
 design notes, the tuning numbers and the roadmap.
