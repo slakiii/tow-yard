@@ -42,9 +42,14 @@ M.TUNE = {
 }
 
 -- Body shapes in local frames (x forward, y left).
+-- front_oh is the overhang past the FRONT axle, so the nose sits at
+-- wheelbase + front_oh. Using front_oh directly shortened the car to 1.7 m and
+-- left the front wheels hanging in front of the body.
+M.CAR.front_x = M.CAR.wheelbase + M.CAR.front_oh
+
 M.CAR_BODY = {
-    { M.CAR.front_oh, M.CAR.half_width },
-    { M.CAR.front_oh, -M.CAR.half_width },
+    { M.CAR.front_x, M.CAR.half_width },
+    { M.CAR.front_x, -M.CAR.half_width },
     { -M.CAR.rear_oh, -M.CAR.half_width },
     { -M.CAR.rear_oh, M.CAR.half_width },
 }
