@@ -36,7 +36,7 @@ Verified numbers for a 4.2 m car + 4.6 m caravan (2.5 m wheelbase, 30° lock,
 | Steady articulation, full lock forward | 56° | Holding full lock is already dangerous |
 | Jackknife (bodies touch) | 66–72° | ~10° of margin from full-lock cornering |
 | Reverse divergence constant τ | drawbar / \|v\| = 2.4 s at 1.5 m/s | Reverse speed IS the difficulty dial |
-| 2° error → 20° / 45° hands-off | 5.5 s / 7.6 s | ~5 s reaction budget |
+| 2° error → 20° / 45° hands-off | 4.9 s / 6.6 s | ~5 s reaction budget |
 
 Two levers fall straight out of the table: **reverse speed cap** (reaction time)
 and **drawbar length** (τ) — a longer caravan is *easier* to reverse, which is a
@@ -118,6 +118,12 @@ next test to write, and par times must come from playtests, not arithmetic.
 **Now (playtest this first)**
 - Feel check: is the crawl-speed steering governor (0.58 s from rest) sluggish?
   If so, floor the scale at ~0.7 → 0.37 s.
+- **Camera scale is the next lever on perceived pace, not the speed caps.**
+  Level 1 is 60x40 m framed whole, which is only 15.2 px/m. Shrinking the yards
+  to ~40x26 m gives 23.4 px/m (+54% apparent speed) and halves the straight
+  reverse distance, with the physics untouched. Raising `vrev` instead would
+  shorten τ = drawbar/|v| and make the reverse *harder* — the opposite of
+  what "too slow" wants.
 - Check the guide arc reads as "where the caravan will go", not decoration.
 - Check whether the handbrake is exploitable as a free halt.
 
@@ -143,7 +149,27 @@ next test to write, and par times must come from playtests, not arithmetic.
 4. Target: local LÖVE build now, itch.io web later? love.js rules out FFI and
    shared-library modules but this project uses neither.
 
-## 9. Verification status
+## 9. Response calibration (after the first playtest)
+
+First playtest report was "I press S for several seconds before anything moves".
+Measured, not guessed: the delay was a 0.2 s gear dwell plus a 1.0 m/s² reverse
+ramp — about a third of a real car's acceleration, so the pedal was dead.
+Changed `DWELL` 0.20 → 0.12, `rev_accel` 1.0 → 3.0, `accel` 1.6 → 3.0,
+`brake` 4.5 → 6.5.
+
+| Milestone on a 15.2 px/m view | before | after |
+|---|---|---|
+| gear engages | 0.21 s | 0.12 s |
+| 1 px of travel | 0.57 s | 0.33 s |
+| 10 px of travel | 1.35 s | 0.78 s |
+| 50 px of travel | 2.92 s | 2.24 s |
+
+The divergence spec was re-measured after the change (2° → 20° now at 4.9 s
+instead of 5.5 s) and the test bounds moved with it. Frame rate is not a factor:
+the sim runs on a fixed 1/120 accumulator and only time-dilates below 10 fps —
+`F1` now reports fps and draw calls so that question is answerable.
+
+## 10. Verification status
 
 - `love tests` → 39 passed, exit 0.
 - `love . --smoke` under xvfb → renders scene, result card and debug overlay,
