@@ -1,7 +1,11 @@
 # Tow Yard — design plan
 
-Status: playable skeleton (1 of 3 levels verified end-to-end, 39 headless tests,
+Status: playable skeleton (1 of 3 levels verified end-to-end, 44 headless tests,
 render smoke). Next step is a human playtest before any more levels are authored.
+
+**This file is the build plan.** For where the game goes next — the decision layer,
+ghost replay, rig variants, sound, and the meta layer — see
+`enjoyment-roadmap.md` in this directory.
 
 ## 1. The pitch
 

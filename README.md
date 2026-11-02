@@ -24,8 +24,13 @@ The two devices are live at the same time and merge per axis (strongest input
 wins), and both feed the same rate-limited steering model — the pad only
 supplies finer targets, never different physics.
 
-Levels: `Tab` cycles. Three are shipped; see `.hermes/plans/tow-yard.md` for the
-design notes, the tuning numbers and the roadmap.
+Levels: `Tab` cycles. Three are shipped.
+
+Plans live in `.hermes/plans/`:
+
+- `tow-yard.md` — physics, controls, tuning numbers, level-design rules, verification.
+- `enjoyment-roadmap.md` — where the game goes next: constraint rules, ghost replay,
+  rig variants, sound, meta layer, and what is deliberately out of scope.
 
 ## Layout
 
