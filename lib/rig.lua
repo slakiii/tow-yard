@@ -80,6 +80,12 @@ function M.coupling_xy(s)
     return s.x + c * math.cos(s.th), s.y + c * math.sin(s.th)
 end
 
+function M.caravan_centre(s)
+    local cx, cy = M.coupling_xy(s)
+    local half = M.CARAVAN.length / 2
+    return cx - half * math.cos(s.ph), cy - half * math.sin(s.ph)
+end
+
 function M.art(s)
     return geom.wrap(s.th - s.ph)
 end

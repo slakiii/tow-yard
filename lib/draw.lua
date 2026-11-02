@@ -77,13 +77,28 @@ function D.scene(lvl, s, opts)
     for x = math.ceil(b.x0 / 5) * 5, b.x1, 5 do love.graphics.line(x, b.y0, x, b.y1) end
     for y = math.ceil(b.y0 / 5) * 5, b.y1, 5 do love.graphics.line(b.x0, y, b.x1, y) end
 
-    -- parking bay
-    local bay = geom.rect_poly(lvl.bay.x, lvl.bay.y, lvl.bay.w, lvl.bay.h, lvl.bay.angle)
+    -- parking bay. The bay has a REQUIRED FACING (bay.angle), so it has to show
+    -- it: without the arrow the same rectangle accepts one orientation and
+    -- rejects the mirror of it, which reads as a bug rather than a rule.
+    local bay = lvl.bay
+    local bay_poly = geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)
+    local vcx, vcy = rig.caravan_centre(s.rig)
+    local in_bay = geom.point_in_poly(vcx, vcy, bay_poly)
+    local angle_off = math.abs(geom.wrap(s.rig.ph - bay.angle))
+    local aligned = angle_off <= bay.tol
+    local state = (not in_bay) and "idle" or (aligned and "good" or "wrong")
+
     set(D.C.bay, s.park_hold > 0 and 0.75 or 0.45)
-    love.graphics.polygon("fill", flat(bay))
-    set(D.C.bay_line)
+    love.graphics.polygon("fill", flat(bay_poly))
+    if state == "wrong" then
+        set(D.C.warn, 0.85)
+    elseif state == "good" then
+        set(D.C.bay_line, 1)
+    else
+        set(D.C.bay_line, 0.55)
+    end
     love.graphics.setLineWidth(0.12)
-    love.graphics.polygon("line", flat(bay))
+    love.graphics.polygon("line", flat(bay_poly))
 
     -- walls
     for _, w in ipairs(lvl.walls) do
@@ -180,6 +195,44 @@ function D.scene(lvl, s, opts)
     -- coupling
     set(D.C.wall_top)
     love.graphics.circle("fill", cx, cy, 0.16)
+
+    -- required facing overlay, drawn last so the rig cannot hide it
+    -- arrow along the bay axis, pointing the way the
+    -- caravan's coupling has to end up
+    local c, sn = math.cos(bay.angle), math.sin(bay.angle)
+    local reach = bay.w * 0.30
+    local head_x, head_y = bay.x + c * reach, bay.y + sn * reach
+    local neck_x, neck_y = bay.x + c * reach * 0.45, bay.y + sn * reach * 0.45
+    local arrow_alpha = (state == "good") and 0.30 or 1.0
+    local acol = state == "wrong" and D.C.warn or D.C.bay_line
+    local nx, ny = -sn, c
+    -- dark halo underneath, so the arrow survives being drawn over the caravan
+    set(D.C.ground, 0.75 * arrow_alpha)
+    love.graphics.setLineWidth(0.34)
+    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
+    love.graphics.polygon("fill", head_x, head_y,
+        neck_x + nx * 0.62, neck_y + ny * 0.62,
+        neck_x - nx * 0.62, neck_y - ny * 0.62)
+    set(acol, 0.95 * arrow_alpha)
+    love.graphics.setLineWidth(0.18)
+    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
+    love.graphics.polygon("fill", head_x, head_y,
+        neck_x + nx * 0.5, neck_y + ny * 0.5,
+        neck_x - nx * 0.5, neck_y - ny * 0.5)
+
+    -- ghost of the correct pose, but only while the caravan is sitting in the
+    -- bay the wrong way round. Permanent training wheels would give away the
+    -- maneuver; this shows up exactly when the player is confused.
+    if state == "wrong" then
+        local half = rig.CARAVAN.length / 2
+        local ghost = geom.poly_world(rig.CARAVAN_BODY, bay.x + half * c, bay.y + half * sn, bay.angle)
+        set(D.C.bay_line, 0.16)
+        love.graphics.polygon("fill", flat(ghost))
+        set(D.C.bay_line, 0.85)
+        love.graphics.setLineWidth(0.10)
+        love.graphics.polygon("line", flat(ghost))
+    end
+
 
     if s.bump_flash > 0 then
         set(D.C.warn, math.min(0.35, s.bump_flash))

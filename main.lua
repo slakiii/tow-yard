@@ -106,7 +106,16 @@ function love.draw()
         elseif smoke.frames == 5 then
             love.graphics.captureScreenshot("smoke-parked.png")
             game.debug = true
-        elseif smoke.frames >= 6 then
+        elseif smoke.frames == 6 then
+            -- level 2 in the bay, facing the wrong way: the frame that has to
+            -- show the required-facing arrow and the corrective ghost
+            game.debug = false
+            load_level(2)
+            session.place_caravan(game.s, game.level.bay.x, game.level.bay.y,
+                game.level.bay.angle + math.pi)
+        elseif smoke.frames == 7 then
+            love.graphics.captureScreenshot("smoke-wrongway.png")
+        elseif smoke.frames >= 8 then
             print("SMOKE OK")
             love.event.quit(0)
         end

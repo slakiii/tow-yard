@@ -166,6 +166,20 @@ function M.update(s, input, dt)
     return s
 end
 
+-- Place the rig so the caravan's body is centred on (px, py) pointing at
+-- `angle`, with the car hitched and aligned. Used by tests and the render
+-- smoke to jump straight to a pose instead of driving to it.
+function M.place_caravan(s, px, py, angle, car_angle)
+    local th = car_angle or angle
+    local half = rig.CARAVAN.length / 2
+    local cx, cy = px + half * math.cos(angle), py + half * math.sin(angle)
+    s.rig.x = cx - rig.CARAVAN.coupling * math.cos(th)
+    s.rig.y = cy - rig.CARAVAN.coupling * math.sin(th)
+    s.rig.th, s.rig.ph = th, angle
+    s.rig.v, s.rig.steer = 0, 0
+    return s
+end
+
 function M.check_park(s, dt)
     local bay = s.level.bay
     local inside = geom.poly_in_poly(rig.caravan_poly(s.rig), s.bay_poly)

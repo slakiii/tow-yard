@@ -17,6 +17,7 @@ local M = { order = {
     "no_false_jackknife_in_normal_reversing",
     "parked_accepts_correct_pose",
     "parked_rejects_wrong_angle",
+    "parked_rejects_reversed_facing",
     "parked_rejects_a_moving_caravan",
 } }
 
@@ -30,15 +31,10 @@ local function step(s, input, n)
     for _ = 1, n do session.update(s, input, DT) end
 end
 
--- Place the caravan's midpoint at the bay centre, facing the bay's axis.
+-- Place the caravan's centre at the bay centre, facing the bay's axis.
 local function place_in_bay(s, angle_offset)
     local bay = s.level.bay
-    local ang = bay.angle + (angle_offset or 0)
-    local mid = rig.CARAVAN.coupling - rig.CARAVAN.length / 2
-    s.rig.x = bay.x - mid * math.cos(ang)
-    s.rig.y = bay.y - mid * math.sin(ang)
-    s.rig.th, s.rig.ph = ang, ang
-    s.rig.v, s.rig.steer = 0, 0
+    session.place_caravan(s, bay.x, bay.y, bay.angle + (angle_offset or 0))
 end
 
 function M.clock_waits_for_input()
@@ -120,6 +116,21 @@ function M.parked_rejects_wrong_angle()
     place_in_bay(s, math.rad(15))     -- inside the 20x20 bay, but way off axis
     step(s, idle(), 120)
     H.expect(not s.parked, "a caravan at 15 deg must not count as parked")
+end
+
+function M.parked_rejects_reversed_facing()
+    -- The bay has a required facing. Both orientations fit the rectangle, so
+    -- only the heading rule can tell them apart -- and the carrier has to SHOW
+    -- which one it wants, or this reads as a bug (see the bay arrow).
+    local s = session.new(fixtures.field())
+    local bay = s.level.bay
+    session.place_caravan(s, bay.x, bay.y, bay.angle + math.pi)
+    step(s, idle(), 120)
+    H.expect(not s.parked, "a caravan parked 180 deg round must not count")
+
+    session.place_caravan(s, bay.x, bay.y, bay.angle)
+    step(s, idle(), 120)
+    H.expect(s.parked, "the correct facing must park")
 end
 
 function M.parked_rejects_a_moving_caravan()
