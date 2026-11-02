@@ -36,8 +36,9 @@ function M.aligned_reverse_stays_aligned()
 end
 
 function M.reverse_is_unstable_at_the_measured_rate()
-    -- 2 deg of initial misalignment, 1.5 m/s reverse: 20 deg at ~5.5 s and
-    -- 45 deg at ~7.6 s with no input at all.
+    -- 2 deg of initial misalignment, full reverse from rest: 20 deg at ~4.9 s
+    -- and 45 deg at ~6.6 s with no input at all. If the pedal response
+    -- (accel/rev_accel) changes, these move -- re-measure, do not widen.
     local s = rig.new(0, 0, 0)
     s.ph = math.rad(2)
     local t20, t45, t = nil, nil, 0
@@ -48,8 +49,8 @@ function M.reverse_is_unstable_at_the_measured_rate()
         if t20 and not t45 and math.abs(math.deg(rig.art(s))) > 45 then t45 = t end
     end
     H.expect(t20 ~= nil, "articulation never reached 20 deg; reverse is not unstable")
-    H.between(t20, 4.4, 6.8, "time to 20 deg")
-    H.between(t45, 6.6, 8.8, "time to 45 deg")
+    H.between(t20, 4.3, 5.6, "time to 20 deg")
+    H.between(t45, 6.0, 7.4, "time to 45 deg")
 end
 
 function M.forward_is_self_stabilising()

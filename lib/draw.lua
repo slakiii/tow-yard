@@ -255,6 +255,8 @@ function D.debug(s, game)
         string.format("x %.2f  y %.2f  th %.1f  ph %.1f", s.rig.x, s.rig.y,
             math.deg(s.rig.th), math.deg(s.rig.ph)),
         string.format("bump %s   jackknife %.0f deg", tostring(s.last_bump), math.deg(rig.TUNE.jackknife)),
+        string.format("%d fps   dt %.1f ms   %d draw calls", love.timer.getFPS(),
+            love.timer.getDelta() * 1000, love.graphics.getStats().drawcalls),
     }
     love.graphics.setFont(fonts.small)
     for i, line in ipairs(lines) do

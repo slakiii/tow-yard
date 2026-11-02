@@ -6,7 +6,7 @@ local geom = require("lib.geom")
 
 local M = {}
 
-M.DWELL = 0.20        -- hold the brake at a standstill this long to engage reverse
+M.DWELL = 0.12        -- hold the brake at a standstill this long to engage reverse
 M.PARK_SPEED = 0.05   -- m/s, must be stopped to count
 M.PARK_HOLD = 0.25    -- seconds of stillness before the park is accepted
 
