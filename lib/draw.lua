@@ -117,8 +117,8 @@ function D.scene(lvl, s, opts)
         love.graphics.circle("fill", c.x, c.y, c.r)
     end
 
-    -- the reversing guide arc
-    if opts.guide then
+    -- the reversing guide arc: reverse (and at rest) only, see session.guide_visible
+    if opts.guide and session.guide_visible(s) then
         local cmd = session.guide_command(s, opts.input)
         local pts = rig.guide(s.rig, cmd, 10, 300)
         set(D.C.guide, 0.6)

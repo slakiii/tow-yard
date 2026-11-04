@@ -108,6 +108,15 @@ function M.gear(s)
     return "N"
 end
 
+-- The guide arc is a 10 s prediction: reverse at 1.8 m/s is ~18 m (the
+-- manoeuvre), forward at 11 m/s is ~90 m -- longer than a 60x40 m yard, so at
+-- 15 px/m it smears dots over the whole scene and reads as decoration. The arc
+-- exists to make an unstable system learnable; forward motion is already
+-- stable. Visible at rest (it previews the reverse) and in reverse only.
+function M.guide_visible(s)
+    return M.gear(s) ~= "D"
+end
+
 local function revert(s, reason)
     if s.prev then
         s.rig.x, s.rig.y = s.prev.x, s.prev.y

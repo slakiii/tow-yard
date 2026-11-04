@@ -92,7 +92,12 @@ Deliberate choices:
   the trailer through the seat; this is the only channel that approximates it,
   and it is the strongest reason to play with a pad.
 - **The guide arc** (predicted caravan path, 10 s horizon) is the assist switch.
-  On = learnable, off = hard mode.
+  It is a **reverse assist**: visible at rest and in reverse, hidden while the
+  gear reads D. The same 10 s horizon that covers ~18 m at `vrev` covers ~90 m
+  at `vmax` — longer than the 60x40 m yard — so forward it stops predicting and
+  just smears dots over the scene. Forward motion is stable; the arc's job is
+  the unstable one. The stationary arc still previews the reverse, which is the
+  "set your angle up before you arrive" readout this game is built around.
 
 ## 5. Level design rules
 
@@ -129,6 +134,10 @@ next test to write, and par times must come from playtests, not arithmetic.
   shorten τ = drawbar/|v| and make the reverse *harder* — the opposite of
   what "too slow" wants.
 - Check the guide arc reads as "where the caravan will go", not decoration.
+  (Resolved in the direction of "less decoration": it is now hidden in forward
+  gear, see §4. Re-open only if forward cone strikes become a real failure
+  source under the `cones_must_stand` rules — then give the forward arc a short
+  distance-based horizon (~8 m) rather than re-enabling the 10 s one.)
 - Check whether the handbrake is exploitable as a free halt.
 
 **Next**

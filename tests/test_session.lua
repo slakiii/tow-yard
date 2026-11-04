@@ -19,6 +19,7 @@ local M = { order = {
     "parked_rejects_wrong_angle",
     "parked_rejects_reversed_facing",
     "parked_rejects_a_moving_caravan",
+    "guide_visible_only_when_not_driving_forward",
 } }
 
 local DT = 1 / 120
@@ -139,6 +140,22 @@ function M.parked_rejects_a_moving_caravan()
     s.rig.v = 1.0                     -- still rolling through the bay
     for _ = 1, 20 do session.update(s, idle(), DT) end
     H.expect(not s.parked, "a rolling caravan must not count as parked")
+end
+
+-- The arc is a 10 s prediction. Reverse at 1.8 m/s is ~18 m, which is the
+-- manoeuvre; forward at 11 m/s is ~90 m, which is longer than the yard and
+-- reads as decoration over the whole scene. Visible at rest and in reverse.
+function M.guide_visible_only_when_not_driving_forward()
+    local s = session.new(fixtures.field())
+    H.expect(session.guide_visible(s), "the arc must be visible at rest -- it previews the reverse")
+
+    step(s, forward(), 60)
+    H.expect(s.rig.v > 0.5, "fixture: the rig should be rolling forward")
+    H.expect(not session.guide_visible(s), "the arc must be hidden while driving forward")
+
+    step(s, backward(), 240)
+    H.expect(s.rig.v < -0.5, "fixture: the rig should be reversing")
+    H.expect(session.guide_visible(s), "the arc must be visible in reverse")
 end
 
 return M

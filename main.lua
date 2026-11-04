@@ -125,7 +125,18 @@ function love.draw()
             game.paused = true
         elseif smoke.frames == 8 then
             love.graphics.captureScreenshot("smoke-paused.png")
-        elseif smoke.frames >= 9 then
+        elseif smoke.frames == 9 then
+            -- driving forward: the guide arc must be absent (it is a reverse
+            -- assist; forward it spanned the whole yard). Compare with
+            -- smoke-scene.png, which is the same level at rest.
+            game.paused = false
+            load_level(1)
+            game.input.steer = 0.5
+            game.s.rig.v = 5.0
+            game.s.started = true
+        elseif smoke.frames == 10 then
+            love.graphics.captureScreenshot("smoke-forward.png")
+        elseif smoke.frames >= 11 then
             print("SMOKE OK")
             love.event.quit(0)
         end
