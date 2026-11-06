@@ -20,6 +20,9 @@ local M = { order = {
     "parked_rejects_reversed_facing",
     "parked_rejects_a_moving_caravan",
     "guide_visible_only_when_not_driving_forward",
+    "quantise_is_idempotent",
+    "quantise_snaps_to_its_grid",
+    "quantised_input_still_parks_level_1",
 } }
 
 local DT = 1 / 120
@@ -156,6 +159,53 @@ function M.guide_visible_only_when_not_driving_forward()
     step(s, backward(), 240)
     H.expect(s.rig.v < -0.5, "fixture: the rig should be reversing")
     H.expect(session.guide_visible(s), "the arc must be visible in reverse")
+end
+
+-- A recorded run is a list of numbers; a replay is only exact if the sim
+-- consumes the same numbers it was recorded with. So the input is snapped to a
+-- grid BEFORE the physics sees it, and snapping twice must change nothing.
+function M.quantise_is_idempotent()
+    local raw = { steer = 0.37, throttle = 0.61, brake = 0.13, handbrake = true }
+    local once = session.quantise(raw)
+    local twice = session.quantise(once)
+    H.expect(once.steer == twice.steer and once.throttle == twice.throttle
+             and once.brake == twice.brake,
+             "quantising twice must equal quantising once, or replay cannot be exact")
+    H.expect(once.handbrake == true, "the handbrake must survive the copy")
+    H.expect(once.last_device == raw.last_device, "so must the device label (the HUD reads it)")
+end
+
+function M.quantise_snaps_to_its_grid()
+    local q = session.quantise({ steer = 0.37, throttle = 0.61, brake = 0 })
+    local steer_step, pedal_step = 1 / session.STEER_STEPS, 1 / session.PEDAL_STEPS
+    H.expect(math.abs(q.steer - 0.37) <= steer_step / 2, "steer lands within half a step")
+    H.expect(math.abs(q.throttle - 0.61) <= pedal_step / 2, "pedals land within half a step")
+    H.expect(q.steer ~= 0.37, "and actually snaps: 0.37 is not already on the grid")
+    -- the grid must be finer than anything the player can feel: one step of lock
+    H.expect(steer_step * rig.CAR.max_steer < math.rad(0.5),
+             "a steer step must be under half a degree of lock")
+end
+
+function M.quantised_input_still_parks_level_1()
+    -- The proof that quantisation is not a physics change: the straight reverse
+    -- that parks level 1 must still park it, with no bumps, on the grid.
+    local levels = require("lib.levels")
+    local lvl = levels.get(1)
+    local s = session.new(lvl)
+    local reverse = session.quantise({ steer = 0, throttle = 0, brake = 1, handbrake = false })
+    local stop = session.quantise({ steer = 0, throttle = 0, brake = 0, handbrake = true })
+    local stop_x = lvl.bay.x - (rig.CARAVAN.coupling - rig.CARAVAN.length / 2)
+    local t = 0
+    while s.rig.x > stop_x and t < 60 do
+        session.update(s, reverse, DT)
+        t = t + DT
+    end
+    while not s.parked and t < 60 do
+        session.update(s, stop, DT)
+        t = t + DT
+    end
+    H.expect(s.parked, "level 1 must still park on quantised input")
+    H.expect(s.final.bumps == 0, "and still without touching anything")
 end
 
 return M

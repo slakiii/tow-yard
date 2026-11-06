@@ -90,8 +90,8 @@ local RAW = {
             { x = 30, y = 35, w = 60, h = 10, kind = "grass" },
             { x = 16, y = 21.5, w = 12, h = 8, kind = "deck" },
         },
-        -- par is the audit's machine line (19.47 s, full grid) times 1.5 until a
-        -- playtest replaces it; never scale it
+        -- par is the audit's machine line (19.48 s, full grid, re-measured after
+        -- input quantisation) times 1.5 until a playtest replaces it; never scale it
         par = 30,
         apron = 2.0,
     },

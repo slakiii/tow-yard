@@ -10,6 +10,32 @@ M.DWELL = 0.12        -- hold the brake at a standstill this long to engage reve
 M.PARK_SPEED = 0.05   -- m/s, must be stopped to count
 M.PARK_HOLD = 0.25    -- seconds of stillness before the park is accepted
 
+-- The input grid. Every number the sim consumes is snapped to one of these, so a
+-- run recorded live and a run replayed from a file feed the physics exactly the
+-- same values -- "the replay matches" becomes structural instead of a tolerance
+-- somebody has to defend when the steering ramp changes.
+-- 1/127 of lock is 0.24 deg at full lock: finer than any hand can aim.
+M.STEER_STEPS = 127
+M.PEDAL_STEPS = 255
+
+local function snap(v, steps)
+    return math.floor((v or 0) * steps + 0.5) / steps
+end
+
+-- Idempotent by construction: a value already on the grid snaps to itself, so
+-- quantising on both sides of a function boundary is harmless.
+function M.quantise(input)
+    if not input then return { steer = 0, throttle = 0, brake = 0, handbrake = false } end
+    return {
+        steer = snap(input.steer, M.STEER_STEPS),
+        throttle = snap(input.throttle, M.PEDAL_STEPS),
+        brake = snap(input.brake, M.PEDAL_STEPS),
+        handbrake = input.handbrake and true or false,
+        -- the HUD prints the device name; dropping it makes the glyphs flicker
+        last_device = input.last_device,
+    }
+end
+
 local function clone_cones(src)
     local out = {}
     for i, c in ipairs(src or {}) do
@@ -76,8 +102,11 @@ function M.derive(s, input, dt)
 end
 
 -- Same command derive would produce, without touching the dwell timer.
--- Used by the reversing guide arc, which must not advance game state.
+-- Used by the reversing guide arc, which must not advance game state. Quantised
+-- like the real path: the arc has to show where the rig will actually go, not
+-- where it would go with infinitely fine steering.
 function M.preview(s, input)
+    input = M.quantise(input)
     local steer = input.steer or 0
     local throttle = input.throttle or 0
     local brake = input.brake or 0
@@ -133,6 +162,7 @@ end
 function M.update(s, input, dt)
     if s.parked then return s end
     dt = math.min(dt, rig.TUNE.max_dt)
+    input = M.quantise(input)
 
     if not s.started and ((input.throttle or 0) > 0 or (input.brake or 0) > 0) then
         s.started = true
