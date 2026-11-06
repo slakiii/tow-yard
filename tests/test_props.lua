@@ -9,6 +9,7 @@ local props = require("lib.props")
 local M = { order = {
     "vocabulary_is_well_formed",
     "solid_kinds_are_boxes_knockable_are_circles",
+    "linear_kinds_are_solid_scenery",
     "scenery_recedes_and_hazards_stay_loud",
     "footprint_uses_defaults_and_overrides",
     "check_accepts_a_typed_level",
@@ -76,6 +77,22 @@ function M.solid_kinds_are_boxes_knockable_are_circles()
             H.expect(type(def.r) == "number" and def.r > 0, kind .. ": circle needs a default r")
         end
     end
+end
+
+function M.linear_kinds_are_solid_scenery()
+    -- A hedge (or a fence) is one long run of scenery, not an object: two of
+    -- them meeting at a corner is a T-junction, not a bug. Everything else is
+    -- discrete and must never intersect anything -- see
+    -- tests/test_levels.lua:discrete_props_do_not_intersect.
+    local linear = 0
+    for kind, def in pairs(props.KINDS) do
+        if def.linear then
+            linear = linear + 1
+            H.expect(def.class == "solid", kind .. ": linear scenery is always solid")
+            H.expect(def.shape == "box", kind .. ": linear scenery is drawn as a box run")
+        end
+    end
+    H.expect(linear >= 1, "the vocabulary needs a linear kind (a hedge, a fence)")
 end
 
 function M.scenery_recedes_and_hazards_stay_loud()

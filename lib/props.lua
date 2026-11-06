@@ -35,12 +35,14 @@ M.KINDS = {
             colour = { 0.34, 0.36, 0.42 }, label = "parked car" },
     tent = { class = "solid", shape = "box", w = 3.4, h = 3.0,
              colour = { 0.45, 0.38, 0.28 }, label = "tent" },
-    hedge = { class = "solid", shape = "box", w = 6.0, h = 0.7,
+    hedge = { class = "solid", shape = "box", w = 6.0, h = 0.7, linear = true,
               colour = { 0.20, 0.30, 0.19 }, label = "hedge" },
     pool = { class = "solid", shape = "box", w = 8.0, h = 5.0,
              colour = { 0.18, 0.30, 0.36 }, label = "pool" },
 
     -- Extend the cone list (knocked once, charged one bump).
+    cone = { class = "knockable", shape = "circle", r = 0.35,
+             colour = { 0.95, 0.55, 0.15 }, label = "traffic cone", loud = true },
     firepit = { class = "knockable", shape = "circle", r = 0.55,
                 colour = { 0.96, 0.42, 0.10 }, label = "fire pit", loud = true },
     chair = { class = "knockable", shape = "circle", r = 0.40,
