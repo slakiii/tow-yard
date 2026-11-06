@@ -467,6 +467,14 @@ local function fmt_time(t)
     return string.format("%d:%05.2f", m, sec)
 end
 
+-- Speed reads in km/h on screen; the model stays SI. The conversion belongs at
+-- the edge, where a human reads it, and it has one home: 1 km/h is 0.28 m/s, so
+-- whole kilometres are fine granularity at reversing speeds (0-6 km/h) and keep
+-- the readout from twitching in the last digit while the rig creeps.
+function D.kmh(v, decimals)
+    return string.format("%." .. (decimals or 0) .. "f km/h", math.abs(v or 0) * 3.6)
+end
+
 function D.hud(s, game)
     local W, H = love.graphics.getDimensions()
 
@@ -487,8 +495,7 @@ function D.hud(s, game)
     local gear = session.gear(s)
     local gear_color = gear == "R" and D.C.guide or (gear == "D" and D.C.good or D.C.dim)
     set(gear_color)
-    love.graphics.print(gear .. "  " .. string.format("%.1f m/s", math.abs(s.rig.v)),
-                        W - 24 - 110, 60)
+    love.graphics.print(gear .. "  " .. D.kmh(s.rig.v), W - 24 - 130, 60)
     set(D.C.dim)
     love.graphics.print(string.format("par %ds   bumps %d", s.level.par, s.bumps), W - 24 - 150, 82)
 
@@ -578,8 +585,8 @@ function D.debug(s, game)
     local W, H = love.graphics.getDimensions()
     local pad = game.input and game.input.last_device or "?"
     local lines = {
-        string.format("art %.1f deg   steer %.1f deg   v %.2f m/s",
-            math.deg(rig.art(s.rig)), math.deg(s.rig.steer), s.rig.v),
+        string.format("art %.1f deg   steer %.1f deg   v %s",
+            math.deg(rig.art(s.rig)), math.deg(s.rig.steer), D.kmh(s.rig.v, 1)),
         string.format("park_hold %.2f   dwell %.2f   device %s", s.park_hold, s.dwell, pad),
         string.format("x %.2f  y %.2f  th %.1f  ph %.1f", s.rig.x, s.rig.y,
             math.deg(s.rig.th), math.deg(s.rig.ph)),

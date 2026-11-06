@@ -8,7 +8,7 @@ local H = require("tests.helper")
 local draw = require("lib.draw")
 
 local M = { order = { "hedge_bumps_fit_a_horizontal_hedge", "hedge_bumps_fit_a_vertical_hedge",
-                      "hedge_bumps_scale_with_the_short_side" } }
+                      "hedge_bumps_scale_with_the_short_side", "speed_reads_in_km_h" } }
 
 local function check_inside(fp, label)
     local bumps = draw.hedge_bumps(fp)
@@ -43,6 +43,14 @@ function M.hedge_bumps_scale_with_the_short_side()
     H.expect(thin[1].r <= 0.3 + 1e-9, "bump radius stays under half the thickness")
     H.expect(#draw.hedge_bumps({ w = 60, h = 0.6 }) > #draw.hedge_bumps({ w = 6, h = 0.6 }),
              "a longer hedge gets more bumps")
+end
+
+function M.speed_reads_in_km_h()
+    H.expect(draw.kmh(0) == "0 km/h", "standstill is 0")
+    H.expect(draw.kmh(5.0) == "18 km/h", "the top of a yard is 18 km/h")
+    H.expect(draw.kmh(1.8) == "6 km/h", "the reverse cap is 6.5 km/h, shown as 6")
+    H.expect(draw.kmh(-3.6) == "13 km/h", "speed is a magnitude: reversing reads positive")
+    H.expect(draw.kmh(1.8, 1) == "6.5 km/h", "the debug overlay keeps a decimal")
 end
 
 return M
