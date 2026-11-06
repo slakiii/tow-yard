@@ -12,12 +12,15 @@ local levels = require("lib.levels")
 local rig = require("lib.rig")
 local session = require("lib.session")
 local levelcheck = require("lib.levelcheck")
+local fixtures = require("tests.fixtures")
 
 local M = { order = { "every_level_is_well_formed", "every_level_has_typed_scenery",
                       "spawn_is_clear", "bay_apron_is_clear", "bay_inside_bounds",
                       "props_stay_inside_bounds", "discrete_props_do_not_intersect",
                       "paint_stays_inside_bounds", "the_bay_sits_on_a_painted_surface",
-                      "levels_have_unique_names", "levelcheck_rejects_a_bad_level",
+                      "levels_have_unique_names", "series_are_contiguous_and_ordered",
+                      "catalog_errors_name_a_broken_series",
+                      "levelcheck_rejects_a_bad_level",
                       "level_1_is_winnable_by_reversing_straight" } }
 
 local DT = 1 / 120
@@ -78,6 +81,49 @@ end
 function M.levels_have_unique_names()
     local errs = levelcheck.catalog_errors(levels.ALL)
     H.expect(#errs == 0, tostring(errs[1]))
+end
+
+function M.series_are_contiguous_and_ordered()
+    -- Every level belongs to a series, orders inside a series run 1..n, and a
+    -- series appears in one unbroken run: the menu, Tab and the audit all derive
+    -- their order from this list, so a split series makes them disagree.
+    local errs = levelcheck.catalog_errors(levels.ALL)
+    H.expect(#errs == 0, tostring(errs[1]))
+
+    local seen = {}
+    for _, lvl in ipairs(levels.ALL) do
+        H.expect(type(lvl.series) == "string" and lvl.series ~= "", lvl.name .. " needs a series")
+        H.expect(type(lvl.order) == "number" and lvl.order >= 1, lvl.name .. " needs an order")
+        seen[lvl.series] = true
+    end
+    H.expect(seen.training and seen.basics and seen.tricky, "the three campaign series exist")
+end
+
+function M.catalog_errors_name_a_broken_series()
+    local broken = fixtures.deep_copy(levels.ALL)
+
+    -- a level without a series
+    local no_series = fixtures.deep_copy(levels.ALL)
+    no_series[1].series = nil
+    H.expect(#levelcheck.catalog_errors(no_series) > 0, "a level with no series is an error")
+
+    -- two levels claiming the same slot
+    local twice = fixtures.deep_copy(levels.ALL)
+    twice[2].order = twice[1].order
+    local errs = levelcheck.catalog_errors(twice)
+    H.expect(#errs > 0 and tostring(errs[1]):find("order") ~= nil,
+             "a duplicate order must be named, got: " .. tostring(errs[1]))
+
+    -- a series that resumes after another one (level 1 moved to the end)
+    local split = fixtures.deep_copy(levels.ALL)
+    local first = table.remove(split, 1)
+    split[#split + 1] = first
+    errs = levelcheck.catalog_errors(split)
+    H.expect(#errs > 0 and tostring(errs[1]):find("contiguous") ~= nil,
+             "a split series must be named, got: " .. tostring(errs[1]))
+
+    -- and the unmodified copy is still clean, so the fixture itself is honest
+    H.expect(#levelcheck.catalog_errors(broken) == 0, "the copy was already broken before mutating")
 end
 
 function M.levelcheck_rejects_a_bad_level()

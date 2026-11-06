@@ -254,18 +254,69 @@ end
 function M.catalog_errors(list)
     local errs = {}
     local names, ids = {}, {}
-    for _, lvl in ipairs(list or {}) do
+    local by_series, runs, seen_series = {}, {}, {}
+    local last = nil
+
+    for i, lvl in ipairs(list or {}) do
         if names[lvl.name] then
             errs[#errs + 1] = "duplicate level name: " .. tostring(lvl.name)
         end
         names[lvl.name] = true
+
         if lvl.id then
             if ids[lvl.id] then
                 errs[#errs + 1] = "duplicate level id: " .. tostring(lvl.id)
             end
             ids[lvl.id] = true
         end
+
+        local s = lvl.series
+        if type(s) ~= "string" or s == "" then
+            errs[#errs + 1] = "level " .. i .. " (" .. tostring(lvl.name) .. ") has no series"
+        else
+            -- Contiguity: the menu derives its blocks from consecutive runs, and
+            -- Tab and the audit both walk this list, so a series split in two
+            -- makes "next level" and "the Training block" disagree.
+            if s ~= last then
+                if seen_series[s] then
+                    errs[#errs + 1] = "series '" .. s .. "' is not contiguous: " .. tostring(lvl.name)
+                        .. " resumes it after another series"
+                else
+                    seen_series[s] = true
+                    runs[#runs + 1] = s
+                end
+                last = s
+            end
+            by_series[s] = by_series[s] or {}
+            local group = by_series[s]
+            group[#group + 1] = lvl
+        end
+
+        local o = lvl.order
+        if type(o) ~= "number" or o < 1 or o ~= math.floor(o) then
+            errs[#errs + 1] = "level " .. i .. " (" .. tostring(lvl.name) .. ") has no positive whole order"
+        end
     end
+
+    for _, s in ipairs(runs) do
+        local group = by_series[s] or {}
+        local used = {}
+        for _, lvl in ipairs(group) do
+            local o = lvl.order
+            if type(o) == "number" then
+                if used[o] then
+                    errs[#errs + 1] = "series '" .. s .. "' uses order " .. tostring(o) .. " twice"
+                end
+                used[o] = true
+            end
+        end
+        for n = 1, #group do
+            if not used[n] then
+                errs[#errs + 1] = "series '" .. s .. "' is missing order " .. n
+            end
+        end
+    end
+
     return errs
 end
 
