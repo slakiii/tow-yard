@@ -8,6 +8,7 @@ local rig = require("lib.rig")
 local session = require("lib.session")
 local input = require("lib.input")
 local props = require("lib.props")
+local menu = require("lib.menu")
 
 local D = {}
 
@@ -538,7 +539,7 @@ function D.hud(s, game)
     local pad = game.input and game.input.last_device == "gamepad"
     local hint = pad
         and "LS/D-pad steer   RT forward   LT brake/reverse   A handbrake   Y guide   B reset   Start pause"
-        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   Esc quit"
+        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   Esc menu"
     set(D.C.dim, 0.9)
     love.graphics.print(hint, 24, H - 26)
 
@@ -550,6 +551,118 @@ function D.hud(s, game)
         set(D.C.dim)
         love.graphics.print("P or Start to resume", W / 2 - 62, H / 2 + 16)
     end
+end
+
+-- Three pips, filled from the left. A triangle at 14 px reads as a mark where a
+-- five-point star reads as noise.
+local function pips(x, y, n)
+    local r = 6
+    for i = 1, 3 do
+        local cx = x + (i - 1) * (r * 2 + 7)
+        local pts = { cx, y - r, cx - r * 0.95, y + r * 0.75, cx + r * 0.95, y + r * 0.75 }
+        if i <= (n or 0) then
+            set(D.C.cone)
+            love.graphics.polygon("fill", pts)
+        else
+            set(D.C.dim, 0.55)
+            love.graphics.polygon("line", pts)
+        end
+    end
+end
+
+-- The level select. A list with series headings rather than a grid of cards: the
+-- headings are derived from the model's series changes, so there is no cursor
+-- position that points at a heading, and the whole thing works at any window
+-- width with no reflow arithmetic.
+function D.menu(model, game)
+    local W, H = love.graphics.getDimensions()
+    local x = 64
+    local y = 44
+
+    love.graphics.setFont(fonts.big)
+    set(D.C.text)
+    love.graphics.print("TOW YARD", x, y)
+
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim)
+    love.graphics.print("reverse the caravan into the bay", x + 3, y + 44)
+
+    local parked, total = 0, 0
+    for _, lvl in ipairs(model.rows or {}) do
+        total = total + 1
+        if menu.mark(model, lvl).completed then parked = parked + 1 end
+    end
+    if total > 0 then
+        local text = string.format("%d of %d parked", parked, total)
+        love.graphics.print(text, W - x - fonts.small:getWidth(text), y + 44)
+    end
+
+    y = y + 100
+    local last_series = nil
+    for i, lvl in ipairs(model.rows or {}) do
+        if lvl.series ~= last_series then
+            if last_series ~= nil then y = y + 12 end
+            love.graphics.setFont(fonts.small)
+            set(D.C.dim)
+            love.graphics.print(string.upper(lvl.series or "custom"), x, y)
+            y = y + 30
+            last_series = lvl.series
+        end
+
+        local mark = menu.mark(model, lvl)
+        local selected = (i == model.index)
+        local right = W - x - 10
+
+        if selected then
+            set(D.C.bay_line, 0.13)
+            love.graphics.rectangle("fill", x - 16, y - 7, W - (x - 16) * 2, 40, 8)
+            set(D.C.bay_line)
+            love.graphics.rectangle("line", x - 16, y - 7, W - (x - 16) * 2, 40, 8)
+        end
+
+        love.graphics.setFont(fonts.mid)
+        set(D.C.text, mark.completed and 1 or 0.78)
+        love.graphics.print(lvl.name, x + 4, y)
+
+        -- a stale row has no stars to show, and the warning text needs the room:
+        -- drawing empty pips there put "level changed" on top of them
+        if not mark.stale then pips(W - 300, y + 13, mark.stars) end
+
+        love.graphics.setFont(fonts.small)
+        if mark.stale then
+            -- a level that changed under the player's time: say so, do not show
+            -- a number earned on geometry that no longer exists
+            set(D.C.cone, 0.9)
+            local text = "level changed"
+            love.graphics.print(text, right - 108 - fonts.small:getWidth(text), y + 5)
+        elseif mark.best then
+            set(D.C.dim)
+            local text = fmt_time(mark.best)
+            love.graphics.print(text, right - 108 - fonts.small:getWidth(text), y + 5)
+        end
+
+        if mark.completed then
+            set(D.C.good, mark.stale and 0.35 or 0.9)
+            local tx = right - 96
+            love.graphics.line(tx, y + 13, tx + 5, y + 19, tx + 13, y + 5)
+        end
+
+        y = y + 46
+    end
+
+    if total == 0 then
+        love.graphics.setFont(fonts.mid)
+        set(D.C.dim)
+        love.graphics.print("No levels yet.", x, y)
+    end
+
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim, 0.9)
+    local pad = game and game.input and game.input.last_device == "gamepad"
+    local hint = pad
+        and "D-pad or stick choose    A open    B quit"
+        or "W/S choose    Enter open    Esc quit"
+    love.graphics.print(hint, x, H - 30)
 end
 
 function D.overlay(s, game)

@@ -163,6 +163,45 @@ function M.poll_actions(st)
     return acts
 end
 
+-- Edge-triggered pad actions for the menus: a held direction must move the
+-- cursor once, not scroll it every frame.
+M.MENU_PAD = {
+    up = "dpadup", down = "dpaddown", left = "dpadleft", right = "dpadright",
+    confirm = "a", cancel = "b",
+}
+M.MENU_NAMES = { "up", "down", "left", "right", "confirm", "cancel" }
+M.MENU_STICK = 0.55   -- a stick must cross this to count as a direction
+
+-- Pure, so a resting pad can be shown to produce nothing without hardware.
+function M.menu_edges(prev, now)
+    local acts = {}
+    for _, name in ipairs(M.MENU_NAMES) do
+        acts[name] = (now[name] and not prev[name]) or false
+    end
+    return acts
+end
+
+function M.poll_menu(st)
+    local now = {}
+    local js = st.joystick
+    if js and js:isConnected() and js:isGamepad() then
+        for _, name in ipairs(M.MENU_NAMES) do
+            now[name] = js:isGamepadDown(M.MENU_PAD[name]) and true or false
+        end
+        -- sticks as four directions, with a threshold: an analogue axis at rest
+        -- drifts a few percent and would otherwise walk the menu by itself
+        local lx = js:getGamepadAxis("leftx")
+        local ly = js:getGamepadAxis("lefty")
+        if lx < -M.MENU_STICK then now.left = true
+        elseif lx > M.MENU_STICK then now.right = true end
+        if ly < -M.MENU_STICK then now.up = true
+        elseif ly > M.MENU_STICK then now.down = true end
+    end
+    local acts = M.menu_edges(st.prev_menu or {}, now)
+    st.prev_menu = now
+    return acts
+end
+
 -- Haptics: articulation is the thing a real driver feels through the seat, so
 -- the rumble doubles as the instability warning.
 function M.rumble(st, articulation, impact)

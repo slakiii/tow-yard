@@ -11,12 +11,12 @@ Guidelines for agents working on this codebase.
 ## Build & Run Commands
 
 ```bash
-love .                                   # play
+love .                                   # play (starts on the level select)
 love tests                               # headless suite, exit 0 = green
 love . --smoke                           # render every screen once, print SMOKE OK, exit 0
 xvfb-run -a -s "-screen 0 1280x720x24" timeout 30 love . --smoke   # same, headless box
 love . --audit 4                         # can level 4 be parked? exit 0 = a line exists
-love . --audit all                       # every level (~20 s each)
+love . --audit all                       # every level (~25 s each, full grid only)
 timeout 4 love .                         # legacy boot smoke (exit 124 = survived)
 ```
 
@@ -31,8 +31,13 @@ poses, reverses in with a bounded controller, and replays the best line through 
 fresh session — a park it reports is a park the shipped physics actually produces.
 Run it for any level you author or move: `love . --audit N` (exit 1 = no line
 found, do not ship). Its time is a **par floor**, never the par itself. It cannot
-do a three-point turn, so a spawn that faces a wall (level 2) reports NO LINE —
-that verdict means "needs a playtest", not "unwinnable".
+do a three-point turn, so a spawn that faces a wall (level 3, Angled bay) reports
+NO LINE — that verdict means "needs a playtest", not "unwinnable".
+
+**The full grid is the gate; `--quick` is not.** `--quick` tries 18 poses and
+misses off-axis levels completely: Fire side and Long way back both report NO
+LINE under `--quick` and find a clean line in the full 360-pose grid. Use it to
+smoke-check the instrument, never to clear a level.
 
 Always gate a commit on the runner's exit code, not on grepped output:
 
@@ -53,7 +58,15 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   `{ steer, throttle, brake, handbrake }` and nothing else. `steer` is a
   **target** wheel position in [-1, 1], not a rate: the ramp lives in `rig.step`.
 - `main.lua` owns the love callbacks, the camera and the fixed-timestep loop,
-  and contains no rules.
+  and contains no rules. It also owns the **mode switch** (`menu` / `play`):
+  each mode has its own update/draw/keypressed, and one dispatch block at the
+  bottom is the only place that knows more than one screen exists.
+- Content is data, identity is a hash: `lib/levelfmt.lua` encodes/decodes a
+  level as portable text and hashes its *content* (geometry, props, par — not
+  `id`/`series`/`order`), `lib/levelcheck.lua` says whether a level is
+  legitimate (used by the suite and, later, the importer and editor),
+  `lib/progress.lua` stores best time/stars/ghost over an injected disk, and
+  `lib/menu.lua` is the level select's model.
 
 ## Code Style
 
@@ -83,8 +96,12 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
 
 ## Level Authoring
 
-A level is data only: `spawn`, `bay` (position, size, angle, tolerance), `walls`
-(boxes), `cones` (circles), `par`, and `apron` (clearance required around the
-bay, default 2 m — tight levels lower it). `tests/test_levels.lua` rejects a
-level whose spawn overlaps a wall, whose bay apron is intruded on, or whose bay
-falls outside the bounds. Never hand-tune par times: playtest them.
+A level is data only: `id`, `name`, `hint`, `series`, `order`, `spawn`, `bay`
+(position, size, angle, tolerance), `walls` (boxes), `cones` (circles), `par`,
+and `apron` (clearance required around the bay, default 2 m — tight levels lower
+it). `tests/test_levels.lua` rejects a level whose spawn overlaps a wall, whose
+bay apron is intruded on, or whose bay falls outside the bounds; `lib/levelcheck.lua`
+holds the rules and also requires the catalogue to be consistent: unique `id`s,
+one contiguous run per `series`, `order` values 1..n inside a series. The menu,
+`Tab` and the audit all walk the same list, so a split series makes them
+disagree. Never hand-tune par times: playtest them.

@@ -8,7 +8,8 @@ local input = require("lib.input")
 local M = { order = { "deadzone_kills_drift", "curve_is_monotonic", "curve_gives_fine_control_near_centre",
                       "stick_left_is_positive_steer", "keyboard_matches_pad_sign",
                       "pad_maps_stick_triggers_and_handbrake", "dpad_steers_when_the_stick_is_centred",
-                      "pad_and_keyboard_merge_by_strongest_input", "idle_pad_changes_nothing" } }
+                      "pad_and_keyboard_merge_by_strongest_input", "idle_pad_changes_nothing",
+                      "menu_edges_fire_once_per_press" } }
 
 function M.deadzone_kills_drift()
     H.near(input.apply_curve(0.05), 0, 1e-12, "small drift")
@@ -92,6 +93,17 @@ function M.idle_pad_changes_nothing()
     H.near(i.brake, 0, 1e-12, "a -1 resting trigger is not a brake")
     H.near(i.throttle, 0, 1e-12, "a -1 resting trigger is not a throttle")
     H.expect(i.last_device == "keyboard", "an idle pad must not steal the glyphs")
+end
+
+function M.menu_edges_fire_once_per_press()
+    -- A menu that reacts to a held stick scrolls at frame rate, which is
+    -- unusable on a pad; edges are what make it one step per press.
+    H.expect(input.menu_edges({}, {}).down == false, "a resting pad produces nothing")
+    H.expect(input.menu_edges({}, { down = true }).down == true, "a fresh press is an edge")
+    H.expect(input.menu_edges({ down = true }, { down = true }).down == false,
+             "a held button is not a new press")
+    H.expect(input.menu_edges({ down = true }, { down = false }).down == false,
+             "releasing is not a press")
 end
 
 return M

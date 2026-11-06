@@ -25,7 +25,9 @@ The two devices are live at the same time and merge per axis (strongest input
 wins), and both feed the same rate-limited steering model — the pad only
 supplies finer targets, never different physics.
 
-Levels: `Tab` cycles. Six are shipped.
+Levels: the game starts on the level select — `W/S` (or stick/d-pad) choose,
+`Enter` opens, `Esc` quits. Seven are shipped, in three series. `Tab` still
+cycles levels inside a run, and `Esc` in a level goes back to the select.
 
 Plans live in `.hermes/plans/`:
 
@@ -43,7 +45,12 @@ Plans live in `.hermes/plans/`:
 | `lib/geom.lua` | polygon transforms, SAT overlap, containment (pure) |
 | `lib/input.lua` | keyboard + gamepad -> one normalised input table |
 | `lib/props.lua` | scenery vocabulary: kinds, footprints, palette (pure) |
+| `lib/levelcheck.lua` | is a level legitimate? one implementation for the suite, the importer and the editor (pure) |
+| `lib/levelfmt.lua` | level as portable text: encode/decode/hash (pure) |
+| `lib/hash.lua` | canonical dump, sha256, build stamp |
+| `lib/progress.lua` | best time, stars and ghosts, over an injected disk (pure) |
+| `lib/menu.lua` | level select model: rows, cursor, marks (pure) |
 | `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |
-| `lib/draw.lua` | flat-colour renderer, HUD, result card |
-| `main.lua` | thin shell: callbacks, camera, fixed-timestep loop |
+| `lib/draw.lua` | flat-colour renderer, HUD, result card, level select |
+| `main.lua` | thin shell: callbacks, mode switch, camera, fixed-timestep loop |
 | `tests/` | headless suite, run with `love tests` |
