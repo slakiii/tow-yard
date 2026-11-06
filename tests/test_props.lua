@@ -18,6 +18,7 @@ local M = { order = {
     "check_rejects_a_kind_on_the_wrong_list",
     "check_rejects_a_bad_size",
     "check_rejects_an_unknown_surface_kind",
+    "every_kind_has_a_renderer",
 } }
 
 local function level_with(walls, cones, surfaces)
@@ -193,6 +194,21 @@ function M.check_rejects_an_unknown_surface_kind()
 
     local untyped = props.check(level_with({}, {}, { { x = 0, y = 0, w = 10, h = 10 } }))
     H.expect(#untyped == 1 and untyped[1]:find("kind"), "an untyped surface is an error")
+end
+
+function M.every_kind_has_a_renderer()
+    -- draw.lua's module body is pure (love is only touched inside its
+    -- functions), so the art table is checkable headless. A kind with no art
+    -- still renders as a plain footprint -- a silent degrade whose symptom is
+    -- "the campsite looks like grey boxes", which is exactly what this catches
+    -- before a playtest has to.
+    local draw = require("lib.draw")
+    local seen = 0
+    for kind in pairs(props.KINDS) do
+        seen = seen + 1
+        H.expect(draw.ART[kind] ~= nil, "no art for kind " .. kind)
+    end
+    H.expect(seen >= 8, "the vocabulary shrank: only " .. seen .. " kinds")
 end
 
 return M

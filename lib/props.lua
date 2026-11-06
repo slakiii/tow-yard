@@ -45,7 +45,7 @@ M.KINDS = {
              colour = { 0.95, 0.55, 0.15 }, label = "traffic cone", loud = true },
     firepit = { class = "knockable", shape = "circle", r = 0.55,
                 colour = { 0.96, 0.42, 0.10 }, label = "fire pit", loud = true },
-    chair = { class = "knockable", shape = "circle", r = 0.40,
+    chair = { class = "knockable", shape = "circle", r = 0.50,
               colour = { 0.40, 0.36, 0.38 }, label = "camp chair" },
 }
 

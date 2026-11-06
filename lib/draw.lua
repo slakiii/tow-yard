@@ -1,10 +1,13 @@
 -- Rendering. Flat colours only: no assets, so the skeleton stays readable and
--- a level is nothing but data.
+-- a level is nothing but data. Scenery is drawn per `kind` (see lib/props.lua)
+-- from polygons and primitives in the same world frame as everything else --
+-- no sprite sheets, and the shape you see is the shape the collision test used.
 
 local geom = require("lib.geom")
 local rig = require("lib.rig")
 local session = require("lib.session")
 local input = require("lib.input")
+local props = require("lib.props")
 
 local D = {}
 
@@ -67,11 +70,201 @@ local function rot_rect(x, y, ang, lx, ly, w, h)
     return pts
 end
 
+-- ---------------------------------------------------------------------------
+-- Scenery. Every kind draws its own footprint in the world frame, so the art is
+-- the collision shape: nothing can drift from the box that actually hit you.
+-- Kinds come from lib/props.lua; a kind with no art here still renders as its
+-- plain footprint in its own colour rather than disappearing.
+-- ---------------------------------------------------------------------------
+
+local function shade(c, k)
+    return { math.min(1, c[1] * k), math.min(1, c[2] * k), math.min(1, c[3] * k) }
+end
+
+local function box_fill(x, y, ang, lx, ly, w, h, colour, a)
+    set(colour, a)
+    love.graphics.polygon("fill", rot_rect(x, y, ang, lx, ly, w, h))
+end
+
+local function ridge(x, y, ang, from_x, to_x, colour, a)
+    set(colour, a)
+    love.graphics.setLineWidth(0.09)
+    local ax, ay = at(x, y, ang, from_x, 0)
+    local bx, by = at(x, y, ang, to_x, 0)
+    love.graphics.line(ax, ay, bx, by)
+end
+
+local ART = {}
+
+-- Tyres are the cheapest "this is a vehicle" cue at 15 px/m: the player's own
+-- car is legible mostly because its wheels break the silhouette.
+local function tyres(x, y, ang, fp, lxs, length)
+    for _, lx in ipairs(lxs) do
+        for _, side in ipairs({ 1, -1 }) do
+            box_fill(x, y, ang, lx, side * (fp.h / 2 - 0.05), length or 0.72, 0.34,
+                     D.C.tyre, 0.95)
+        end
+    end
+end
+
+ART.building = function(x, y, ang, fp, a)
+    -- walls under the eaves, then the roof inset from them: the dark rim is
+    -- what says "building" instead of "flat coloured plot"
+    local inset = 0.45
+    local w, h = fp.w - inset * 2, fp.h - inset * 2
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, shade(fp.colour, 0.55), a)
+    box_fill(x, y, ang, 0, h * 0.24, w, h * 0.46, shade(fp.colour, 1.16), a)
+    box_fill(x, y, ang, 0, -h * 0.24, w, h * 0.46, shade(fp.colour, 0.84), a)
+    ridge(x, y, ang, -w / 2, w / 2, shade(fp.colour, 1.55), 0.7 * a)
+    -- a chimney, so a clubhouse is not mistaken for a very large tent
+    box_fill(x, y, ang, -w * 0.3, h * 0.1, 0.7, 0.7, shade(fp.colour, 0.4), a)
+end
+
+ART.rv = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, fp.colour, a)
+    -- cab: a narrower, darker box at the +x end, with the screen across its nose
+    box_fill(x, y, ang, fp.w * 0.33, 0, fp.w * 0.3, fp.h * 0.9, shade(fp.colour, 0.82), a)
+    box_fill(x, y, ang, fp.w * 0.455, 0, 0.14, fp.h * 0.8, D.C.glass, 0.6 * a)
+    -- a lit habitation window on each side, plus the roof vent
+    box_fill(x, y, ang, -fp.w * 0.08, fp.h * 0.5 - 0.1, fp.w * 0.5, 0.16, D.C.glass, 0.5 * a)
+    box_fill(x, y, ang, -fp.w * 0.08, -fp.h * 0.5 + 0.1, fp.w * 0.5, 0.16, D.C.glass, 0.5 * a)
+    box_fill(x, y, ang, -fp.w * 0.16, 0, 1.0, 0.6, shade(fp.colour, 1.25), 0.9 * a)
+    tyres(x, y, ang, fp, { -fp.w * 0.3, fp.w * 0.3 })
+end
+
+ART.caravan = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, fp.colour, a)
+    box_fill(x, y, ang, 0, fp.h * 0.5 - 0.11, fp.w * 0.56, 0.18, D.C.glass, 0.55 * a)
+    box_fill(x, y, ang, 0, -fp.h * 0.5 + 0.11, fp.w * 0.56, 0.18, D.C.glass, 0.55 * a)
+    box_fill(x, y, ang, -fp.w * 0.2, 0, 0.9, 0.55, shade(fp.colour, 1.22), 0.85 * a)
+    box_fill(x, y, ang, -fp.w * 0.42, 0, 0.16, fp.h * 0.45, shade(fp.colour, 0.7), a)
+    tyres(x, y, ang, fp, { 0 })
+end
+
+ART.car = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, fp.colour, a)
+    box_fill(x, y, ang, fp.w * 0.06, 0, fp.w * 0.42, fp.h * 0.86, shade(fp.colour, 1.18), a)
+    box_fill(x, y, ang, fp.w * 0.3, 0, 0.14, fp.h * 0.76, D.C.glass, 0.55 * a)
+    box_fill(x, y, ang, -fp.w * 0.12, 0, 0.14, fp.h * 0.76, D.C.glass, 0.4 * a)
+    tyres(x, y, ang, fp, { -fp.w * 0.3, fp.w * 0.3 }, 0.62)
+end
+
+ART.tent = function(x, y, ang, fp, a)
+    -- Two slopes off a bright ridge, pegged at the corners, with a dark flap at
+    -- one end of the ridge. The first version put a wide dark wedge there and it
+    -- read as an arrow, so the opening is now a narrow slot.
+    box_fill(x, y, ang, 0, fp.h * 0.22, fp.w, fp.h * 0.5, shade(fp.colour, 1.18), a)
+    box_fill(x, y, ang, 0, -fp.h * 0.22, fp.w, fp.h * 0.5, shade(fp.colour, 0.78), a)
+    ridge(x, y, ang, -fp.w / 2, fp.w / 2, shade(fp.colour, 1.55), 0.9 * a)
+    box_fill(x, y, ang, fp.w * 0.44, 0, 0.5, fp.h * 0.22, shade(fp.colour, 0.3), a)
+    set({ 0.16, 0.14, 0.13 }, a * 0.9)
+    for _, lx in ipairs({ -1, 1 }) do
+        for _, ly in ipairs({ -1, 1 }) do
+            local qx, qy = at(x, y, ang, lx * (fp.w / 2 - 0.28), ly * (fp.h / 2 - 0.28))
+            love.graphics.circle("fill", qx, qy, 0.12)
+        end
+    end
+end
+
+ART.hedge = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, fp.colour, a)
+    set(shade(fp.colour, 0.7), a)
+    love.graphics.setLineWidth(0.06)
+    love.graphics.polygon("line", rot_rect(x, y, ang, 0, 0, fp.w, fp.h))
+    -- foliage bumps spaced in metres, not pixels, so a 46 m hedge and a 3 m one
+    -- read as the same plant
+    local n = math.max(1, math.floor(fp.w / 1.1))
+    set(shade(fp.colour, 1.35), a * 0.85)
+    for i = 0, n - 1 do
+        local lx = -fp.w / 2 + (i + 0.5) * (fp.w / n)
+        local ly = (i % 2 == 0) and fp.h * 0.3 or -fp.h * 0.3
+        local bx, by = at(x, y, ang, lx, ly)
+        love.graphics.circle("fill", bx, by, fp.h * 0.75)
+    end
+end
+
+ART.pool = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, shade(fp.colour, 1.7), a)
+    box_fill(x, y, ang, 0, 0, fp.w - 0.7, fp.h - 0.7, fp.colour, a)
+    set(props.SURFACES.water.colour, 0.55 * a)
+    love.graphics.setLineWidth(0.08)
+    for i = 1, 3 do
+        local ly = -fp.h * 0.25 + (i - 1) * fp.h * 0.25
+        local lx = fp.w * 0.16 * ((i % 2 == 0) and 1 or -1)
+        local ax, ay = at(x, y, ang, lx - fp.w * 0.12, ly)
+        local bx, by = at(x, y, ang, lx + fp.w * 0.12, ly)
+        love.graphics.line(ax, ay, bx, by)
+    end
+end
+
+ART.cone = function(x, y, ang, fp, a)
+    set(fp.colour, a)
+    love.graphics.circle("fill", x, y, fp.r)
+    set({ 1, 0.96, 0.90 }, 0.85 * a)
+    love.graphics.setLineWidth(0.08)
+    love.graphics.circle("line", x, y, fp.r * 0.55)
+end
+
+ART.firepit = function(x, y, ang, fp, a)
+    -- A ring of stones around an ember bed. The stones are grey-brown, not
+    -- orange: an all-orange disc with a bright centre read as a coin, and a
+    -- pool of flame with no ring read as "fire", not "fire pit".
+    set({ 0.18, 0.16, 0.15 }, a)
+    love.graphics.circle("fill", x, y, fp.r)
+    for i = 0, 5 do
+        local q = (i / 6) * math.pi * 2
+        local sx, sy = at(x, y, ang, math.cos(q) * fp.r * 0.74, math.sin(q) * fp.r * 0.74)
+        set(shade({ 0.46, 0.42, 0.38 }, 1.0 + 0.12 * (i % 2)), a)
+        love.graphics.circle("fill", sx, sy, fp.r * 0.32)
+    end
+    set({ 0.30, 0.24, 0.20 }, a)
+    love.graphics.circle("fill", x, y, fp.r * 0.5)
+    set({ 1.0, 0.62, 0.22 }, a * 0.95)
+    love.graphics.circle("fill", x, y, fp.r * 0.28)
+end
+
+ART.chair = function(x, y, ang, fp, a)
+    -- the seat fills the footprint: a chair whose collision circle is bigger
+    -- than its picture is a bump the player cannot see coming
+    set(shade(fp.colour, 0.55), a)
+    love.graphics.circle("fill", x, y, fp.r)
+    box_fill(x, y, ang, 0, 0, fp.r * 1.15, fp.r * 1.15, fp.colour, a)
+    box_fill(x, y, ang, -fp.r * 0.62, 0, fp.r * 0.3, fp.r * 1.2, shade(fp.colour, 1.35), a)
+end
+
+function D.prop(x, y, ang, fp, alpha)
+    local art = ART[fp.kind]
+    if art then return art(x, y, ang, fp, alpha or 1) end
+    set(fp.colour, alpha)
+    if fp.shape == "box" then
+        love.graphics.polygon("fill", rot_rect(x, y, ang or 0, 0, 0, fp.w, fp.h))
+    else
+        love.graphics.circle("fill", x, y, fp.r)
+    end
+end
+
+-- Ground paint. Under everything, over nothing: a zone has no collision, so it
+-- may be overlapped by anything without changing the manoeuvre.
+function D.surfaces(lvl)
+    for _, zone in ipairs(lvl.surfaces or {}) do
+        local def = props.SURFACES[zone.kind]
+        if def then
+            set(def.colour)
+            love.graphics.polygon("fill", flat(geom.rect_poly(zone.x, zone.y, zone.w, zone.h,
+                                                            zone.angle or 0)))
+        end
+    end
+end
+
+D.ART = ART
+
 function D.scene(lvl, s, opts)
     local b = lvl.bounds
 
     set(D.C.ground)
     love.graphics.rectangle("fill", b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+
+    D.surfaces(lvl)
 
     set(D.C.grid, 0.8)
     love.graphics.setLineWidth(0.02)
@@ -103,18 +296,23 @@ function D.scene(lvl, s, opts)
 
     -- walls
     for _, w in ipairs(lvl.walls) do
-        local wp = geom.rect_poly(w.x, w.y, w.w, w.h, w.angle or 0)
-        set(D.C.wall)
-        love.graphics.polygon("fill", flat(wp))
-        set(D.C.wall_top, 0.6)
-        love.graphics.setLineWidth(0.06)
-        love.graphics.polygon("line", flat(wp))
+        local fp = props.footprint(w)
+            or { shape = "box", w = w.w, h = w.h, colour = D.C.wall }
+        D.prop(w.x, w.y, w.angle or 0, fp, 1)
     end
 
-    -- cones
+    -- cones and other knockables: a hit one stays on the ground, dimmed, so the
+    -- bump the player paid for keeps explaining itself
     for _, c in ipairs(s.cones) do
-        if c.hit then set(D.C.dim, 0.45) else set(D.C.cone) end
-        love.graphics.circle("fill", c.x, c.y, c.r)
+        local fp = props.footprint(c) or { shape = "circle", r = c.r, colour = D.C.cone }
+        if c.hit then
+            D.prop(c.x, c.y, 0, fp, 0.32)
+            set(D.C.dim, 0.7)
+            love.graphics.setLineWidth(0.08)
+            love.graphics.circle("line", c.x, c.y, fp.r * 1.7)
+        else
+            D.prop(c.x, c.y, 0, fp, 1)
+        end
     end
 
     -- the reversing guide arc: reverse (and at rest) only, see session.guide_visible

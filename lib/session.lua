@@ -13,7 +13,9 @@ M.PARK_HOLD = 0.25    -- seconds of stillness before the park is accepted
 local function clone_cones(src)
     local out = {}
     for i, c in ipairs(src or {}) do
-        out[i] = { x = c.x, y = c.y, r = c.r or 0.35, hit = false }
+        -- `kind` rides along: the renderer draws cones from session state (they
+        -- carry `hit`), and a knocked-over chair must still look like a chair.
+        out[i] = { x = c.x, y = c.y, r = c.r or 0.35, kind = c.kind, hit = false }
     end
     return out
 end
