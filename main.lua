@@ -11,9 +11,15 @@ local audit = require("lib.audit")
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
 
-local smoke = { enabled = false, frames = 0 }
+local smoke = { enabled = false, frames = 0, frozen = false }
+
+-- A mode is a screen with its own update/draw/keys. The game began as a single
+-- implicit state; the level select and the editor make the switch explicit, so a
+-- key press cannot leak into the screen that is not showing.
+local MODE = { play = "play" }
 
 local game = {
+    mode = MODE.play,
     index = 1,
     guide = true,
     debug = false,
@@ -81,7 +87,13 @@ function love.load(args)
     load_level(game.index)
 end
 
-function love.update(dt)
+local function update_play(dt)
+    -- The smoke run forces exact states for its screenshots. A physics step
+    -- between the frame that sets a state and the frame that captures it makes
+    -- the PNG depend on wall-clock timing -- it is how "the screenshots are
+    -- unchanged" becomes false on a busy machine.
+    if smoke.frozen then return end
+
     local acts = input.poll_actions(game.input)
     if acts.reset then
         load_level(game.index)
@@ -110,7 +122,7 @@ function love.update(dt)
     input.rumble(game.input, rig.art(game.s.rig), impact)
 end
 
-function love.draw()
+local function draw_play()
     love.graphics.push()
     love.graphics.translate(game.ox, game.oy)
     love.graphics.scale(game.scale, -game.scale)
@@ -161,8 +173,13 @@ function love.draw()
             -- smoke-scene.png, which is the same level at rest.
             game.paused = false
             load_level(1)
+            -- freeze the sim: the state below is the frame, and a step before
+            -- the capture would move the rig by an amount the clock chose
+            smoke.frozen = true
             game.input.steer = 0.5
+            game.s.rig.steer = rig.CAR.max_steer * 0.5
             game.s.rig.v = 5.0
+            game.s.t = 3.0
             game.s.started = true
         elseif smoke.frames == 10 then
             love.graphics.captureScreenshot("smoke-forward.png")
@@ -173,8 +190,9 @@ function love.draw()
     end
 end
 
-function love.keypressed(key)
+local function play_keypressed(key)
     if key == "escape" then
+        -- Quits for now; the menu takes this key over when it exists (Task 12).
         love.event.quit()
     elseif key == "r" then
         load_level(game.index)
@@ -201,4 +219,21 @@ end
 
 function love.joystickremoved()
     input.refresh(game.input)
+end
+
+-- ---------------------------------------------------------------------------
+-- Mode dispatch: the only place that knows more than one screen exists. Adding
+-- the menu or the editor is a branch here, not a change to the play loop.
+-- ---------------------------------------------------------------------------
+
+function love.update(dt)
+    if game.mode == MODE.play then update_play(dt) end
+end
+
+function love.draw()
+    if game.mode == MODE.play then draw_play() end
+end
+
+function love.keypressed(key)
+    if game.mode == MODE.play then play_keypressed(key) end
 end
