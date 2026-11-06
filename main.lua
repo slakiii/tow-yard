@@ -6,6 +6,7 @@ local session = require("lib.session")
 local levels = require("lib.levels")
 local input = require("lib.input")
 local draw = require("lib.draw")
+local audit = require("lib.audit")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
@@ -41,10 +42,39 @@ local function load_level(n)
     game.scale, game.ox, game.oy = camera(game.level)
 end
 
-function love.load(args)
-    for _, a in ipairs(args or {}) do
-        if a == "--smoke" then smoke.enabled = true end
+-- `love . --audit N` / `--audit all`: is the level parkable at all? A level no
+-- line parks is a shipped bug, and this is the only cheap evidence for it.
+-- Exit 0 when every level asked about has a line.
+local function run_audit(arg, quick)
+    local targets = {}
+    if arg == nil or arg == "all" then
+        for i = 1, #levels.ALL do targets[#targets + 1] = i end
+    else
+        targets[1] = tonumber(arg) or 1
     end
+    local failed = 0
+    for _, i in ipairs(targets) do
+        local res = audit.solve(levels.get(i), { grid = quick and audit.QUICK_GRID or nil })
+        for _, line in ipairs(audit.format(res, i)) do print(line) end
+        if not res.solved then failed = failed + 1 end
+    end
+    print(string.format("%d level(s) audited, %d without a line", #targets, failed))
+    love.event.quit(failed > 0 and 1 or 0)
+end
+
+function love.load(args)
+    local want_audit, audit_arg, quick = false, nil, false
+    for i, a in ipairs(args or {}) do
+        if a == "--smoke" then smoke.enabled = true end
+        if a == "--quick" then quick = true end
+        if a == "--audit" then
+            want_audit = true
+            local next_arg = args[i + 1]
+            if next_arg and next_arg:sub(1, 2) ~= "--" then audit_arg = next_arg end
+        end
+    end
+    if want_audit then return run_audit(audit_arg, quick) end
+
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
     input.init(game.input)

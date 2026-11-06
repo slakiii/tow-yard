@@ -9,6 +9,7 @@ game is entirely about setting up a maneuver before you commit to it.
 love .            # play
 love tests        # headless test suite, exit 0 = green
 love . --smoke    # render every screen once and quit (boot check)
+love . --audit 4  # is level 4 parkable at all? exit 0 = a line exists
 ```
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
@@ -24,7 +25,7 @@ The two devices are live at the same time and merge per axis (strongest input
 wins), and both feed the same rate-limited steering model — the pad only
 supplies finer targets, never different physics.
 
-Levels: `Tab` cycles. Three are shipped.
+Levels: `Tab` cycles. Six are shipped.
 
 Plans live in `.hermes/plans/`:
 
@@ -41,6 +42,8 @@ Plans live in `.hermes/plans/`:
 | `lib/levels.lua` | level data: spawn, bay, walls, cones, par |
 | `lib/geom.lua` | polygon transforms, SAT overlap, containment (pure) |
 | `lib/input.lua` | keyboard + gamepad -> one normalised input table |
+| `lib/props.lua` | scenery vocabulary: kinds, footprints, palette (pure) |
+| `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |
 | `lib/draw.lua` | flat-colour renderer, HUD, result card |
 | `main.lua` | thin shell: callbacks, camera, fixed-timestep loop |
 | `tests/` | headless suite, run with `love tests` |

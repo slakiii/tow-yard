@@ -15,14 +15,24 @@ love .                                   # play
 love tests                               # headless suite, exit 0 = green
 love . --smoke                           # render every screen once, print SMOKE OK, exit 0
 xvfb-run -a -s "-screen 0 1280x720x24" timeout 30 love . --smoke   # same, headless box
+love . --audit 4                         # can level 4 be parked? exit 0 = a line exists
+love . --audit all                       # every level (~20 s each)
 timeout 4 love .                         # legacy boot smoke (exit 124 = survived)
 ```
 
 ## Testing
 
 `tests/main.lua` is the runner; modules return `{ order = {...}, test_name = function }`.
-Pure logic (`rig`, `session`, `levels`, `geom`, `input`) is covered headlessly;
+Pure logic (`rig`, `session`, `levels`, `geom`, `props`, `input`) is covered headlessly;
 `main.lua` and `lib/draw.lua` are verified by `--smoke` plus human playtest.
+
+**Level winnability is auditable, not assumed.** `lib/audit.lua` searches staging
+poses, reverses in with a bounded controller, and replays the best line through a
+fresh session — a park it reports is a park the shipped physics actually produces.
+Run it for any level you author or move: `love . --audit N` (exit 1 = no line
+found, do not ship). Its time is a **par floor**, never the par itself. It cannot
+do a three-point turn, so a spawn that faces a wall (level 2) reports NO LINE —
+that verdict means "needs a playtest", not "unwinnable".
 
 Always gate a commit on the runner's exit code, not on grepped output:
 
