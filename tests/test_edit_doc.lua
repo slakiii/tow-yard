@@ -7,6 +7,8 @@ local levels = require("lib.levels")
 local levelfmt = require("lib.levelfmt")
 local props = require("lib.props")
 local doc = require("lib.edit.doc")
+local levelcheck = require("lib.levelcheck")
+local fixtures = require("tests.fixtures")
 
 local M = { order = {
     "a_document_does_not_mutate_its_level",
@@ -17,6 +19,8 @@ local M = { order = {
     "remove_deletes_and_clears_the_selection",
     "bay_and_spawn_can_be_set",
     "a_document_survives_a_snapshot",
+    "a_new_level_gets_an_id_nothing_answers_to",
+    "a_blank_level_round_trips_through_the_custom_store",
 } }
 
 function M.a_document_does_not_mutate_its_level()
@@ -124,6 +128,44 @@ function M.a_document_survives_a_snapshot()
     H.expect(doc.restore(d, text) == true, "restore must succeed")
     H.expect(levelfmt.content_hash(doc.level(d)) == before, "and bring the level back exactly")
     H.expect(d.selection == nil, "with nothing selected")
+end
+
+function M.a_new_level_gets_an_id_nothing_answers_to()
+    H.expect(doc.free_id({}, "untitled") == "untitled", "the preferred id when it is free")
+    H.expect(doc.free_id({ "untitled" }, "untitled") == "untitled-2", "then numbered")
+    H.expect(doc.free_id({ "untitled", "untitled-2" }, "untitled") == "untitled-3",
+        "and it counts past ids that are already numbered")
+    H.expect(doc.free_id({ "untitled-2" }, "untitled") == "untitled",
+        "a taken suffix does not block the plain id")
+
+    local id = doc.free_id({ "straight-back" }, "untitled")
+    H.expect(id ~= "straight-back", "and never a shipped level's id")
+
+    -- the generated id is usable as a document straight away
+    local d = doc.blank(id, "Untitled")
+    H.expect(doc.level(d).id == id, "a blank document takes that id")
+    H.expect(doc.level(d).name == "Untitled", "and the name given to it")
+end
+
+function M.a_blank_level_round_trips_through_the_custom_store()
+    local disk = fixtures.fake_disk()
+    local d = doc.blank(doc.free_id({}, "untitled"), "Untitled")
+
+    H.expect(#levelcheck.errors(doc.level(d)) == 0,
+        "a blank site must be legal to save, or the editor starts you in an error")
+
+    local saved = levelfmt.save_custom(disk, doc.level(d))
+    H.expect(saved ~= nil, "it saves")
+
+    local list = levelfmt.scan_custom(disk)
+    H.expect(#list == 1, "and comes back: " .. #list)
+    H.expect(list[1].id == "untitled", "with its id")
+    H.expect(list[1].name == "Untitled", "and its name")
+
+    -- and a second new level is a second level, not an overwrite
+    local d2 = doc.blank(doc.free_id({ "untitled" }, "untitled"), "Untitled")
+    levelfmt.save_custom(disk, doc.level(d2))
+    H.expect(#levelfmt.scan_custom(disk) == 2, "two new levels are two files")
 end
 
 return M

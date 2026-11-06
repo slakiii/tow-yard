@@ -174,6 +174,7 @@ end
 -- The model is rebuilt on entry so the marks are what the store says now: a park
 -- made a second ago must not still read as unplayed.
 local function open_menu()
+    game.custom = levelfmt.scan_custom(disk)
     game.menu = menu.new(levels.ALL, game.custom, game.progress)
     game.mode = MODE.menu
 end
@@ -234,6 +235,14 @@ local function open_editor(lvl)
     game.mode = MODE.editor
 end
 
+local function new_level()
+    local taken = {}
+    for _, l in ipairs(levels.ALL) do taken[#taken + 1] = l.id end
+    for _, l in ipairs(game.custom) do taken[#taken + 1] = l.id end
+    -- the authored level, not the document: open_editor takes a level and wraps it
+    open_editor(doc.blank(doc.free_id(taken, "untitled"), "Untitled").level)
+end
+
 -- A custom level may not take a shipped level's id: progress, ghosts and the
 -- content hash are all keyed by it, and two levels answering to "straight-back"
 -- is a bug that surfaces as somebody else's best time.
@@ -286,8 +295,26 @@ local function editor_keypressed(key)
     local e = game.editor
     local ctrl = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
 
+    if e.typing then
+        if key == "return" or key == "kpenter" then
+            local name = (e.typing.buffer:gsub("^%s+", ""):gsub("%s+$", "")):sub(1, 60)
+            if name == "" then name = e.typing.original end
+            if name ~= e.typing.original then
+                editor_edit(function() e.doc.level.name = name end)
+            end
+            e.typing = nil
+        elseif key == "escape" then
+            e.typing = nil
+        elseif key == "backspace" then
+            e.typing.buffer = e.typing.buffer:sub(1, -2)
+        end
+        return
+    end
+
     if key == "escape" then
         open_menu()
+    elseif key == "f2" then
+        e.typing = { buffer = e.doc.level.name or "", original = e.doc.level.name or "" }
     elseif key == "leftbracket" or key == "rightbracket" then
         local n = #e.palette
         local i = 1
@@ -503,6 +530,18 @@ function love.load(args)
     game.mode = smoke.enabled and MODE.play or MODE.menu
     if game.mode == MODE.menu then open_menu() end
     if want_edit and not smoke.enabled then open_editor(levels.get(1)) end
+
+    -- LÖVE's default error handler is an interactive loop: a draw-time error
+    -- under --smoke sits there until something kills it, so the run reports as a
+    -- timeout (124) rather than as a failure with a traceback. It has happened.
+    if smoke.enabled then
+        love.errorhandler = function(msg)
+            print("SMOKE ERROR: " .. tostring(msg))
+            print(debug.traceback("", 2))
+            io.stdout:flush()
+            os.exit(1)
+        end
+    end
 end
 
 local function update_play(dt)
@@ -676,7 +715,12 @@ local function smoke_step()
         menu.switch_tab(game.menu, "custom")
     elseif smoke.frames == 20 then
         love.graphics.captureScreenshot("smoke-menu-custom.png")
-    elseif smoke.frames >= 21 then
+    elseif smoke.frames == 21 then
+        -- a new level: the blank site a player meets on "N"
+        new_level()
+    elseif smoke.frames == 22 then
+        love.graphics.captureScreenshot("smoke-editor-new.png")
+    elseif smoke.frames >= 23 then
         print("SMOKE OK")
         love.event.quit(0)
     end
@@ -708,6 +752,8 @@ local function menu_keypressed(key)
         love.event.quit()
     elseif key == "tab" or key == "left" or key == "right" then
         menu.cycle_tab(game.menu, 1)
+    elseif key == "n" then
+        new_level()
     elseif key == "e" then
         local lvl = menu.current(game.menu)
         if lvl then open_editor(lvl) end
@@ -814,6 +860,12 @@ function love.keypressed(key)
         menu_keypressed(key)
     elseif game.mode == MODE.editor then
         editor_keypressed(key)
+    end
+end
+
+function love.textinput(text)
+    if game.mode == MODE.editor and game.editor.typing then
+        game.editor.typing.buffer = game.editor.typing.buffer .. text
     end
 end
 

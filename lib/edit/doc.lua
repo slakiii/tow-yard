@@ -52,6 +52,19 @@ function M.blank(id, name)
     }
 end
 
+-- A fresh id that nothing answers to. Ids key progress, ghosts and the custom
+-- level's filename, so two levels called "untitled" are two levels sharing one
+-- best time and one ghost.
+function M.free_id(taken, base)
+    base = base or "untitled"
+    local used = {}
+    for _, t in ipairs(taken or {}) do used[t] = true end
+    if not used[base] then return base end
+    local n = 1
+    repeat n = n + 1 until not used[base .. "-" .. n]
+    return base .. "-" .. n
+end
+
 function M.new(level)
     return { level = deep(level), selection = nil }
 end

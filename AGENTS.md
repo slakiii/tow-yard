@@ -46,6 +46,12 @@ Always gate a commit on the runner's exit code, not on grepped output:
 love tests > /tmp/t.log 2>&1; echo "exit=$?"   # commit only when exit=0
 ```
 
+A `--smoke` run that HANGS is an error, not a slow frame: LÖVE's default error
+handler is an interactive loop, so a draw-time error sits there until something
+kills it and a `timeout` reports 124 instead of a failure. `--smoke` installs its
+own `love.errorhandler` that prints the traceback and exits 1, so trust the exit
+code and read the log.
+
 `--smoke` is the real render check: it draws a scene frame, a parked-result
 frame and a debug frame, writes screenshots to the LÖVE save directory, then
 quits 0. A `timeout` exit of 124 only proves the process did not crash.

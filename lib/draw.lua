@@ -916,13 +916,21 @@ function D.editor_ui(doc, state, game)
         .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
     love.graphics.print(hint, 16, H - 52)
     set(D.C.text, 0.85)
-    local keys = "V verify   P play   S save   O export to clipboard   Esc level select"
+    local keys = "V verify   P play   S save   O export   F2 name   Esc level select"
     love.graphics.print(keys, 16, H - 28)
 
     love.graphics.setFont(fonts.small)
-    set(D.C.dim, 0.9)
-    love.graphics.print(string.format("%s  %.0f px/m", tostring(doc.level.id),
-        (state and state.cam and state.cam.scale) or 0), W - 220, 14)
+    if state and state.typing then
+        -- the caret is a bar, not a blinking cursor: this is a one-line field
+        set(D.C.bay_line)
+        love.graphics.print("NAME  " .. state.typing.buffer .. "|", W - 420, 14)
+        set(D.C.dim, 0.7)
+        love.graphics.print("Enter keeps   Esc cancels", W - 420, 32)
+    else
+        set(D.C.dim, 0.9)
+        love.graphics.print(string.format("%s  %s  %.0f px/m", tostring(doc.level.name),
+            tostring(doc.level.id), (state and state.cam and state.cam.scale) or 0), W - 420, 14)
+    end
 end
 
 function D.overlay(s, game)
