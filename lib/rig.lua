@@ -12,6 +12,8 @@ local geom = require("lib.geom")
 
 local M = {}
 
+M.STEP = 1 / 120      -- the physics step, in seconds; a recorded run is measured in these
+
 M.CAR = {
     wheelbase = 2.50,
     front_oh = 0.90,      -- rear axle to front bumper
