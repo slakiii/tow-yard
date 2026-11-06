@@ -26,7 +26,7 @@ end
 function M.series_follow_the_data()
     local m = menu.new(levels.ALL, {}, nil)
     H.expect(ids_of(m) ==
-        "straight-back,angled-bay,tight-alley,fire-side,round-the-back,clean-line",
+        "straight-back,long-way-back,angled-bay,tight-alley,fire-side,round-the-back,clean-line",
         "campaign order: " .. ids_of(m))
 end
 
@@ -38,7 +38,7 @@ function M.within_a_series_levels_follow_their_order()
     for i = #levels.ALL, 1, -1 do reversed[#reversed + 1] = levels.get(i) end
     local m = menu.new(reversed, {}, nil)
     H.expect(ids_of(m) ==
-        "round-the-back,clean-line,tight-alley,fire-side,straight-back,angled-bay",
+        "round-the-back,clean-line,tight-alley,fire-side,straight-back,long-way-back,angled-bay",
         "series order from the list, level order from `order`: " .. ids_of(m))
 end
 
@@ -50,14 +50,14 @@ function M.moving_wraps_at_both_ends()
     menu.move(m, 1)
     H.expect(menu.current(m).id == "straight-back", "down from the last wraps to the first")
     menu.move(m, 2)
-    H.expect(menu.current(m).id == "tight-alley", "and it steps by more than one")
+    H.expect(menu.current(m).id == "angled-bay", "and it steps by more than one")
 end
 
 function M.confirm_returns_the_selected_level()
     local m = menu.new(levels.ALL, {}, nil)
     menu.move(m, 1)
     H.expect(menu.confirm(m) == levels.get(2), "confirm opens what the cursor is on")
-    H.expect(menu.count(m) == 6, "and the menu knows how many levels it has")
+    H.expect(menu.count(m) == 7, "and the menu knows how many levels it has")
 end
 
 function M.marks_come_from_the_progress_store()

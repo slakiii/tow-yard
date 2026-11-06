@@ -65,9 +65,40 @@ local RAW = {
         apron = 2.0,
     },
     {
-        id = "angled-bay",
+        id = "long-way-back",
         series = "training",
         order = 2,
+        name = "Long way back",
+        hint = "It is further than it looks. Correct early: the error grows as you reverse.",
+        bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
+        spawn = { x = 52, y = 20, th = 0 },
+        bay = { x = 16, y = 21.5, w = 10, h = 6, angle = 0, tol = math.rad(8) },
+        walls = {
+            { x = 30, y = 13.7, w = 56, h = 0.7, kind = "hedge" },
+            { x = 30, y = 30.3, w = 56, h = 0.7, kind = "hedge" },
+            { x = 8, y = 36, kind = "tent" },
+            { x = 34, y = 35.5, kind = "rv" },
+            { x = 10, y = 6, kind = "car" },
+        },
+        cones = {
+            { x = 40, y = 16.2, kind = "cone" },
+            { x = 30, y = 27.4, kind = "cone" },
+        },
+        surfaces = {
+            { x = 30, y = 22, w = 60, h = 18, kind = "gravel" },
+            { x = 30, y = 6.5, w = 60, h = 13, kind = "grass" },
+            { x = 30, y = 35, w = 60, h = 10, kind = "grass" },
+            { x = 16, y = 21.5, w = 12, h = 8, kind = "deck" },
+        },
+        -- par is the audit's machine line (19.47 s, full grid) times 1.5 until a
+        -- playtest replaces it; never scale it
+        par = 30,
+        apron = 2.0,
+    },
+    {
+        id = "angled-bay",
+        series = "training",
+        order = 3,
         name = "Angled bay",
         hint = "The bay is sideways. Set the angle up before you commit to the reverse.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -222,6 +253,15 @@ end
 
 function M.get(i)
     return M.ALL[i] or M.ALL[1]
+end
+
+-- The menu holds levels, not indices: opening a card has to find the level the
+-- shop list is showing, and an id is stable where a position is not.
+function M.find(id)
+    for i, lvl in ipairs(M.ALL) do
+        if lvl.id == id then return i end
+    end
+    return nil
 end
 
 return M
