@@ -9,6 +9,7 @@ local MODULES = {
     "tests/test_session",
     "tests/test_levels",
     "tests/test_props",
+    "tests/test_draw",
     "tests/test_input",
 }
 

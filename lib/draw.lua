@@ -166,20 +166,42 @@ ART.tent = function(x, y, ang, fp, a)
     end
 end
 
+-- Foliage bumps for a hedge, in the prop's own local frame. Pure and exported
+-- because the first version assumed the long axis was x: it took the bump radius
+-- from fp.h, so level 2's vertical hedge (0.8 x 34 m) drew ONE green circle of
+-- radius 0.75*34 = 25.5 m over the whole site. Anything derived from a hedge
+-- must come from its thickness, and anything placed along it from its length.
+function D.hedge_bumps(fp)
+    local long = math.max(fp.w, fp.h)
+    local thick = math.min(fp.w, fp.h)
+    local r = thick * 0.38
+    -- touching rather than spaced: bumps further apart than their own diameter
+    -- read as a dotted line, not as a hedge. Capped so a 60 m boundary does not
+    -- cost hundreds of draw calls.
+    local step = r * 2.2
+    local n = math.max(1, math.min(80, math.floor(long / step)))
+    local out = {}
+    for i = 0, n - 1 do
+        local t = -long / 2 + (i + 0.5) * (long / n)
+        local side = ((i % 2 == 0) and 0.1 or -0.1) * thick
+        if fp.w >= fp.h then
+            out[#out + 1] = { lx = t, ly = side, r = r }
+        else
+            out[#out + 1] = { lx = side, ly = t, r = r }
+        end
+    end
+    return out
+end
+
 ART.hedge = function(x, y, ang, fp, a)
     box_fill(x, y, ang, 0, 0, fp.w, fp.h, fp.colour, a)
     set(shade(fp.colour, 0.7), a)
     love.graphics.setLineWidth(0.06)
     love.graphics.polygon("line", rot_rect(x, y, ang, 0, 0, fp.w, fp.h))
-    -- foliage bumps spaced in metres, not pixels, so a 46 m hedge and a 3 m one
-    -- read as the same plant
-    local n = math.max(1, math.floor(fp.w / 1.1))
     set(shade(fp.colour, 1.35), a * 0.85)
-    for i = 0, n - 1 do
-        local lx = -fp.w / 2 + (i + 0.5) * (fp.w / n)
-        local ly = (i % 2 == 0) and fp.h * 0.3 or -fp.h * 0.3
-        local bx, by = at(x, y, ang, lx, ly)
-        love.graphics.circle("fill", bx, by, fp.h * 0.75)
+    for _, bump in ipairs(D.hedge_bumps(fp)) do
+        local bx, by = at(x, y, ang, bump.lx, bump.ly)
+        love.graphics.circle("fill", bx, by, bump.r)
     end
 end
 
