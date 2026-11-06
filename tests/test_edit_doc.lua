@@ -21,6 +21,8 @@ local M = { order = {
     "a_document_survives_a_snapshot",
     "a_new_level_gets_an_id_nothing_answers_to",
     "a_blank_level_round_trips_through_the_custom_store",
+    "the_bay_and_the_spawn_can_be_picked",
+    "the_bay_and_the_spawn_can_be_moved_and_turned",
 } }
 
 function M.a_document_does_not_mutate_its_level()
@@ -166,6 +168,45 @@ function M.a_blank_level_round_trips_through_the_custom_store()
     local d2 = doc.blank(doc.free_id({ "untitled" }, "untitled"), "Untitled")
     levelfmt.save_custom(disk, doc.level(d2))
     H.expect(#levelfmt.scan_custom(disk) == 2, "two new levels are two files")
+end
+
+function M.the_bay_and_the_spawn_can_be_picked()
+    local d = doc.blank("pick-special")
+    H.expect(doc.pick(d, 22, 20, 0.2).list == "bay", "a click inside the bay selects the bay")
+    H.expect(doc.pick(d, 48, 20, 0.2).list == "spawn", "a click on the start selects the spawn")
+
+    -- a prop is always the thing you meant: it is small and it sits on top
+    doc.add(d, "building", 22, 20)
+    H.expect(doc.pick(d, 22, 20, 0.2).list == "walls", "a building over the bay wins")
+
+    d.selection = nil
+    H.expect(doc.pick(d, 55, 35, 0.2) == nil, "empty ground still clears the selection")
+end
+
+function M.the_bay_and_the_spawn_can_be_moved_and_turned()
+    local d = doc.blank("move-special")
+    local walls = #d.level.walls
+
+    doc.select(d, "bay")
+    doc.move(d, 3, -2)
+    H.expect(d.level.bay.x == 25 and d.level.bay.y == 18, "the bay moved")
+    H.expect(#d.level.walls == walls, "and nothing else did")
+    H.expect(doc.rotate(d, 90), "the bay turns")
+    H.expect(math.abs(math.deg(d.level.bay.angle) - 90) < 1e-9, "stored as radians")
+
+    doc.select(d, "spawn")
+    doc.move(d, -4, 1)
+    H.expect(d.level.spawn.x == 44 and d.level.spawn.y == 21, "the spawn moved")
+    doc.rotate(d, 90)
+    H.expect(math.abs(math.deg(d.level.spawn.th) - 90) < 1e-9,
+        "the spawn's heading is `th`, the format's name for it -- not `angle`")
+    H.expect(d.level.spawn.angle == nil, "and no stray field was written")
+
+    H.expect(doc.resize(d, 1, 1) == nil, "a spawn has no size to nudge")
+    H.expect(doc.remove(d) == nil, "and cannot be deleted")
+    H.expect(d.level.spawn ~= nil, "so the level still has a start")
+
+    H.expect(doc.select(d, "walls") == nil, "only single records select by name")
 end
 
 return M

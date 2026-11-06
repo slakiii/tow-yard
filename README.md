@@ -33,11 +33,11 @@ Editor: `love . --edit`, or `E` on a level in the select.
 | wheel | zoom (6-40 px/m, around the cursor) |
 | right / middle drag | pan |
 | click | place the active prop (0.5 m snap), or select with `select` |
-| drag | move the selection |
+| drag | move the selection (props, the bay and the spawn alike) |
 
 | Key | |
 |---|---|
-| `[` `]` | cycle the tool palette |
+| `[` `]` | cycle the tool palette (`bay` and `spawn` place the goal and the start) |
 | `Q` `E` | rotate the selection 15 deg |
 | `+` `-` | resize |
 | `Del` | remove |

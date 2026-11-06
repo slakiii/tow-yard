@@ -38,7 +38,7 @@ local MODE = { play = "play", menu = "menu", editor = "editor" }
 
 -- Everything the editor can place. "select" is a tool, not a kind: the palette
 -- is one list so the player's eye does not have to sort it into two.
-local PALETTE = { "select", "hedge", "building", "tent", "rv", "car", "pool",
+local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool",
                   "cone", "firepit", "chair", "gravel", "grass", "deck" }
 local SNAP = 0.5
 
@@ -370,12 +370,20 @@ local function editor_mousepressed(x, y, button)
 
     if e.tool == "select" then
         local sel = doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
-        if sel then
-            local entry = (e.doc.level[sel.list] or {})[sel.index]
-            if entry and sel.list ~= "surfaces" or (entry and sel.list == "surfaces") then
-                e.drag = { wx = wx, wy = wy, ox = entry.x, oy = entry.y }
+        local entry = sel and (sel.list == "bay" or sel.list == "spawn")
+            and e.doc.level[sel.list] or (sel and (e.doc.level[sel.list] or {})[sel.index])
+        if entry then e.drag = { wx = wx, wy = wy, ox = entry.x, oy = entry.y } end
+    elseif e.tool == "bay" or e.tool == "spawn" then
+        -- place, then keep it selected: the next thing you want is usually a drag
+        local field = (e.tool == "bay") and "bay" or "spawn"
+        editor_edit(function()
+            if field == "bay" then
+                doc.set_bay(e.doc, { x = snap(wx, e.snap), y = snap(wy, e.snap) })
+            else
+                doc.set_spawn(e.doc, { x = snap(wx, e.snap), y = snap(wy, e.snap) })
             end
-        end
+            doc.select(e.doc, field)
+        end)
     else
         editor_edit(function() doc.add(e.doc, e.tool, snap(wx, e.snap), snap(wy, e.snap)) end)
     end
@@ -391,7 +399,8 @@ local function editor_mousemoved(x, y, dx, dy)
     if e.drag then
         local wx, wy = editor_to_world(x, y)
         local sel = e.doc.selection
-        local entry = sel and (e.doc.level[sel.list] or {})[sel.index]
+        local entry = sel and ((sel.list == "bay" or sel.list == "spawn")
+            and e.doc.level[sel.list] or (e.doc.level[sel.list] or {})[sel.index])
         if not entry then return end
         local nx = snap(e.drag.ox + (wx - e.drag.wx), e.snap)
         local ny = snap(e.drag.oy + (wy - e.drag.wy), e.snap)
@@ -716,8 +725,10 @@ local function smoke_step()
     elseif smoke.frames == 20 then
         love.graphics.captureScreenshot("smoke-menu-custom.png")
     elseif smoke.frames == 21 then
-        -- a new level: the blank site a player meets on "N"
+        -- a new level: the blank site a player meets on "N", with the bay
+        -- selected so the frame shows what selecting the goal looks like
         new_level()
+        doc.select(game.editor.doc, "bay")
     elseif smoke.frames == 22 then
         love.graphics.captureScreenshot("smoke-editor-new.png")
     elseif smoke.frames >= 23 then

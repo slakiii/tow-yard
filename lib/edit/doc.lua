@@ -92,11 +92,23 @@ function M.restore(doc, text)
     return true
 end
 
+-- bay and spawn are single records, not list entries: they are selectable like
+-- anything else so they can be dragged, but they cannot be deleted or duplicated
+-- (a level without a place to start or a place to finish is not a level).
+local SINGLE = { bay = true, spawn = true }
+
 local function selected(doc)
     local s = doc.selection
     if not s then return nil, nil end
+    if SINGLE[s.list] then return doc.level[s.list], s end
     local entry = (doc.level[s.list] or {})[s.index]
     return entry, s
+end
+
+function M.select(doc, name)
+    if name ~= "bay" and name ~= "spawn" then return nil, "not a single record" end
+    doc.selection = { list = name }
+    return doc.selection
 end
 
 local function shape_of(kind)
@@ -132,6 +144,7 @@ end
 function M.pick(doc, x, y, tol)
     tol = tol or 0.3
     local lvl = M.level(doc)
+    local spawn = lvl.spawn
 
     for i = #lvl.cones, 1, -1 do
         local c = lvl.cones[i]
@@ -157,6 +170,17 @@ function M.pick(doc, x, y, tol)
         end
     end
 
+    -- the spawn marker is small and the bay is large, so the order here is the
+    -- opposite of the props: a prop under the cursor is always the thing you meant
+    if (spawn.x - x) ^ 2 + (spawn.y - y) ^ 2 <= (1.2 + tol) ^ 2 then
+        doc.selection = { list = "spawn" }
+        return doc.selection
+    end
+    if geom.point_in_poly(x, y, geom.rect_poly(lvl.bay.x, lvl.bay.y, lvl.bay.w, lvl.bay.h, lvl.bay.angle)) then
+        doc.selection = { list = "bay" }
+        return doc.selection
+    end
+
     doc.selection = nil
     return nil
 end
@@ -168,11 +192,17 @@ function M.move(doc, dx, dy)
     return entry
 end
 
+-- The field that holds the heading differs per record: props use `angle`, the
+-- spawn uses `th` (the level format's name for it). Writing `angle` on a spawn
+-- would be a silent no-op that looks like a rotation.
+local HEADING = { bay = "angle", spawn = "th" }
+
 function M.rotate(doc, ddeg)
     local entry, s = selected(doc)
     if not entry then return nil, "nothing selected" end
     if s.list == "cones" then return nil, "a cone has no angle to turn" end
-    entry.angle = (entry.angle or 0) + math.rad(ddeg)
+    local field = HEADING[s.list] or "angle"
+    entry[field] = (entry[field] or 0) + math.rad(ddeg)
     return entry
 end
 
@@ -186,6 +216,8 @@ function M.resize(doc, dw, dh)
     local current = (lvl[s.list] or {})[s.index]
     if not current then return nil, "selection is stale" end
 
+    if SINGLE[s.list] then return nil, s.list .. " is resized by numbers, not by nudges" end
+
     if s.list == "cones" then
         entry.r = math.max(0.1, current.r + dw)
     else
@@ -198,6 +230,7 @@ end
 function M.remove(doc)
     local entry, s = selected(doc)
     if not entry then return nil, "nothing selected" end
+    if SINGLE[s.list] then return nil, "a level needs its " .. s.list end
     table.remove(doc.level[s.list], s.index)
     doc.selection = nil
     return entry

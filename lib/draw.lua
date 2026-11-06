@@ -763,6 +763,27 @@ end
 -- about to write: a hedge with no numbers is still a hedge of its default size,
 -- but the moment you resize it the numbers appear in the file.
 
+-- Corner brackets instead of a rectangle. A full frame drawn at the prop's own
+-- edge hides the very thing you are lining up: the first version was a 3 px
+-- solid orange box 0.25 m outside the footprint, which at 15 px/m is a frame you
+-- cannot see through. Four short L's say "this one" and leave the middle clear.
+local function brackets(poly, frac)
+    frac = frac or 0.28
+    local n = #poly / 2
+    love.graphics.setLineWidth(1.5)
+    for k = 0, n - 1 do
+        local i = k * 2
+        local x, y = poly[i + 1], poly[i + 2]
+        local pi = ((k - 1) % n) * 2
+        local ni = ((k + 1) % n) * 2
+        local px, py = poly[pi + 1], poly[pi + 2]
+        local nx, ny = poly[ni + 1], poly[ni + 2]
+        love.graphics.line(x, y, x + (px - x) * frac, y + (py - y) * frac)
+        love.graphics.line(x, y, x + (nx - x) * frac, y + (ny - y) * frac)
+    end
+    love.graphics.setLineWidth(1)
+end
+
 function D.editor_world(doc, state)
     local lvl = doc.level
     local b = lvl.bounds
@@ -818,23 +839,26 @@ function D.editor_world(doc, state)
     -- the selection, drawn last so nothing sits on top of it
     local sel = doc.selection
     if sel then
-        local entry = (lvl[sel.list] or {})[sel.index]
-        local fp = entry and props.footprint(entry)
-        if fp then
-            set(D.C.cone)
-            love.graphics.setLineWidth(3)
-            if fp.shape == "circle" then
-                love.graphics.circle("line", entry.x, entry.y, fp.r + 0.25)
-            else
-                love.graphics.polygon("line",
-                    flat(geom.rect_poly(entry.x, entry.y, fp.w + 0.5, fp.h + 0.5, entry.angle or 0)))
+        set(D.C.cone)
+        if sel.list == "bay" then
+            brackets(flat(geom.rect_poly(bay.x, bay.y, bay.w + 0.15, bay.h + 0.15, bay.angle)))
+        elseif sel.list == "spawn" then
+            love.graphics.setLineWidth(1.5)
+            love.graphics.circle("line", lvl.spawn.x, lvl.spawn.y, 1.5)
+            love.graphics.setLineWidth(1)
+        else
+            local entry = (lvl[sel.list] or {})[sel.index]
+            local fp = entry and props.footprint(entry)
+            if fp then
+                if fp.shape == "circle" then
+                    love.graphics.setLineWidth(1.5)
+                    love.graphics.circle("line", entry.x, entry.y, fp.r + 0.12)
+                    love.graphics.setLineWidth(1)
+                else
+                    brackets(flat(geom.rect_poly(entry.x, entry.y, fp.w + 0.15, fp.h + 0.15,
+                        entry.angle or 0)))
+                end
             end
-            love.graphics.setLineWidth(1)
-        elseif sel.list == "bay" then
-            set(D.C.cone)
-            love.graphics.setLineWidth(3)
-            love.graphics.polygon("line", flat(geom.rect_poly(bay.x, bay.y, bay.w + 0.6, bay.h + 0.6, bay.angle)))
-            love.graphics.setLineWidth(1)
         end
     end
 end
