@@ -862,9 +862,18 @@ function D.editor_ui(doc, state, game)
             love.graphics.rectangle("fill", 10, y - 3, 212, 22, 4)
         end
         set(active and D.C.bay_line or D.C.dim, active and 1 or 0.85)
-        love.graphics.print(name, 18, y)
+        -- the kind is what the file says; the label is what the thing is. Show
+        -- both when they differ, or a level reads as a list of nouns.
+        local def = props.get(name)
+        local text = name
+        if def and def.label and def.label ~= name then text = name .. "  " .. def.label end
+        love.graphics.print(text, 18, y)
         y = y + 22
     end
+
+    y = y + 6
+    set(D.C.dim)
+    love.graphics.print("snap " .. ((state.snap and state.snap > 0) and (state.snap .. " m") or "off"), 18, y)
 
     y = y + 12
     set(D.C.text, 0.9)
@@ -894,17 +903,17 @@ function D.editor_ui(doc, state, game)
         love.graphics.print("none  -  savable", 18, y)
     else
         set(D.C.warn, 0.95)
-        for i = 1, math.min(4, #errors) do
+        for i = 1, math.min(3, #errors) do
             love.graphics.print(errors[i], 18, y)
             y = y + 18
         end
-        if #errors > 4 then love.graphics.print("+" .. (#errors - 4) .. " more", 18, y) end
+        if #errors > 3 then love.graphics.print("+" .. (#errors - 3) .. " more", 18, y) end
     end
 
     love.graphics.setFont(fonts.small)
     set(D.C.dim, a)
     local hint = "[ ] tool   click add   click select   drag move   Q/E rotate   +/- size   "
-        .. "Del remove   ctrl+Z undo   wx zoom"
+        .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
     love.graphics.print(hint, 16, H - 52)
     set(D.C.text, 0.85)
     local keys = "V verify   P play   S save   O export to clipboard   Esc level select"

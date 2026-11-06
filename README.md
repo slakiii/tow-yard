@@ -17,7 +17,16 @@ Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
 `I` import the clipboard, `F1` debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 
-Editor (dev tool for now): `love . --edit`.
+Level select: `W`/`S` choose, `Enter` open, `Tab` switch tab (Campaign /
+Custom levels), `E` open the selected level in the editor, `X` delete a custom
+level, `I` paste a share code, `Esc` quit.
+
+Custom levels live in `custom/` inside the LÖVE save directory (the empty tab
+prints the exact path). They are a separate tab from the campaign, they carry
+their own best times and ghosts, and deleting one asks once and removes the file
+and its index entry together.
+
+Editor: `love . --edit`, or `E` on a level in the select.
 
 | Mouse | |
 |---|---|
@@ -33,6 +42,7 @@ Editor (dev tool for now): `love . --edit`.
 | `+` `-` | resize |
 | `Del` | remove |
 | `Ctrl+Z` | undo (32 deep) |
+| `G` | snapping on/off (0.5 m, or free placement) |
 | `V` | verify with the winnability audit (~2 s, blocking) |
 | `P` | play the level in place, `Esc` back to the editor |
 | `S` | save to `custom/`, `O` copy the level as a share code |

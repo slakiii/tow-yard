@@ -193,8 +193,9 @@ local function editor_to_world(mx, my)
     return cam.x + (mx - W / 2) / cam.scale, cam.y - (my - H / 2) / cam.scale
 end
 
-local function snap(v)
-    return math.floor(v / SNAP + 0.5) * SNAP
+local function snap(v, step)
+    if not step or step <= 0 then return v end
+    return math.floor(v / step + 0.5) * step
 end
 
 local function editor_errors()
@@ -224,6 +225,7 @@ local function open_editor(lvl)
             scale = math.min((W - 300) / (b.x1 - b.x0), (H - 120) / (b.y1 - b.y0)),
         },
         tool = "select",
+        snap = SNAP,
         palette = PALETTE,
         errors = {},
         dirty = false,
@@ -302,6 +304,8 @@ local function editor_keypressed(key)
         else
             say("nothing to undo")
         end
+    elseif key == "g" then
+        e.snap = (e.snap and e.snap > 0) and 0 or SNAP
     elseif key == "q" or key == "e" then
         editor_edit(function() doc.rotate(e.doc, key == "q" and -15 or 15) end)
     elseif key == "=" or key == "kp+" then
@@ -346,7 +350,7 @@ local function editor_mousepressed(x, y, button)
             end
         end
     else
-        editor_edit(function() doc.add(e.doc, e.tool, snap(wx), snap(wy)) end)
+        editor_edit(function() doc.add(e.doc, e.tool, snap(wx, e.snap), snap(wy, e.snap)) end)
     end
 end
 
@@ -362,8 +366,8 @@ local function editor_mousemoved(x, y, dx, dy)
         local sel = e.doc.selection
         local entry = sel and (e.doc.level[sel.list] or {})[sel.index]
         if not entry then return end
-        local nx = snap(e.drag.ox + (wx - e.drag.wx))
-        local ny = snap(e.drag.oy + (wy - e.drag.wy))
+        local nx = snap(e.drag.ox + (wx - e.drag.wx), e.snap)
+        local ny = snap(e.drag.oy + (wy - e.drag.wy), e.snap)
         if nx ~= entry.x or ny ~= entry.y then
             if not e.drag.pushed then
                 undo.push(e.undo, doc.snapshot(e.doc))
@@ -704,6 +708,9 @@ local function menu_keypressed(key)
         love.event.quit()
     elseif key == "tab" or key == "left" or key == "right" then
         menu.cycle_tab(game.menu, 1)
+    elseif key == "e" then
+        local lvl = menu.current(game.menu)
+        if lvl then open_editor(lvl) end
     elseif key == "x" then
         menu_delete()
     elseif key == "up" or key == "w" then
