@@ -21,28 +21,15 @@ local M = { order = {
     "edited_level_keeps_completion_loses_time",
 } }
 
-local function fake_disk(files)
-    local disk = { files = files or {}, writes = 0 }
-    function disk.read(name) return disk.files[name] end
-    function disk.write(name, data)
-        disk.files[name] = data
-        disk.writes = disk.writes + 1
-    end
-    function disk.remove(name) disk.files[name] = nil end
-    return disk
-end
-
--- A parked session at a chosen clock reading. `t` is set before the hold so the
--- test can talk about "a 20 second run"; the handbrake keeps the clock still.
+-- A parked session at a chosen clock reading; the fixture builds it through the
+-- game's own park rule, and this wrapper keeps the assertion at the call site.
 local function parked(lvl, t)
-    local s = session.new(lvl)
-    session.place_caravan(s, lvl.bay.x, lvl.bay.y, lvl.bay.angle)
-    s.t = t
-    local hold = { steer = 0, throttle = 0, brake = 0, handbrake = true }
-    for _ = 1, 60 do session.update(s, hold, 1 / 120) end
+    local s = fixtures.parked(lvl, t)
     H.expect(s.parked, "fixture: a caravan placed in the bay must park")
     return s
 end
+
+local fake_disk = fixtures.fake_disk
 
 function M.fresh_store_is_empty()
     local disk = fake_disk()
