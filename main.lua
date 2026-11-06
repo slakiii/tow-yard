@@ -127,6 +127,7 @@ local function import_text(text)
             progress.put_ghost(game.progress, got.level, run.encode(got.run, game.codec))
         end
         game.custom = levelfmt.scan_custom(disk)
+        if game.menu then menu.rebuild(game.menu, levels.ALL, game.custom) end
         -- open it: an imported level you cannot play is a download, not a level
         load_level_object(got.level)
         game.mode = MODE.play
@@ -562,6 +563,7 @@ local function update_menu(dt)
     local acts = input.poll_menu(game.input)
     if acts.up then menu.move(game.menu, -1) end
     if acts.down then menu.move(game.menu, 1) end
+    if acts.left or acts.right then menu.cycle_tab(game.menu, 1) end
     if acts.confirm then open_selected() end
     if acts.cancel then love.event.quit() end
 end
@@ -657,15 +659,53 @@ local function smoke_step()
         editor_errors()
     elseif smoke.frames == 16 then
         love.graphics.captureScreenshot("smoke-editor.png")
-    elseif smoke.frames >= 17 then
+    elseif smoke.frames == 17 then
+        -- the custom tab, empty: the state a player meets before importing
+        open_menu()
+        menu.switch_tab(game.menu, "custom")
+    elseif smoke.frames == 18 then
+        love.graphics.captureScreenshot("smoke-menu-custom-empty.png")
+    elseif smoke.frames == 19 then
+        -- and with one imported level in it
+        game.custom = { doc.level(doc.blank("my-level", "My level")) }
+        menu.rebuild(game.menu, levels.ALL, game.custom)
+        menu.switch_tab(game.menu, "custom")
+    elseif smoke.frames == 20 then
+        love.graphics.captureScreenshot("smoke-menu-custom.png")
+    elseif smoke.frames >= 21 then
         print("SMOKE OK")
         love.event.quit(0)
     end
 end
 
+local function menu_delete()
+    local lvl = menu.confirm(game.menu)
+    if not (lvl and menu.current_tab(game.menu) == "custom") then return end
+    game.confirm_delete = { id = lvl.id, name = lvl.name }
+end
+
 local function menu_keypressed(key)
+    -- a pending delete owns the keys until it is answered
+    if game.confirm_delete then
+        if key == "return" or key == "kpenter" then
+            local id = game.confirm_delete.id
+            game.confirm_delete = nil
+            levelfmt.delete_custom(disk, id)
+            game.custom = levelfmt.scan_custom(disk)
+            menu.rebuild(game.menu, levels.ALL, game.custom)
+            say("deleted " .. id)
+        elseif key == "escape" then
+            game.confirm_delete = nil
+        end
+        return
+    end
+
     if key == "escape" then
         love.event.quit()
+    elseif key == "tab" or key == "left" or key == "right" then
+        menu.cycle_tab(game.menu, 1)
+    elseif key == "x" then
+        menu_delete()
     elseif key == "up" or key == "w" then
         menu.move(game.menu, -1)
     elseif key == "down" or key == "s" then
@@ -674,6 +714,7 @@ local function menu_keypressed(key)
         open_selected()
     elseif key == "i" then
         import_text(love.system.getClipboardText() or "")
+        menu.rebuild(game.menu, levels.ALL, game.custom)
     end
 end
 

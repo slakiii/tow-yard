@@ -7,6 +7,7 @@ local levels = require("lib.levels")
 local menu = require("lib.menu")
 local progress = require("lib.progress")
 local fixtures = require("tests.fixtures")
+local doc = require("lib.edit.doc")
 
 local M = { order = {
     "series_follow_the_data",
@@ -15,6 +16,8 @@ local M = { order = {
     "confirm_returns_the_selected_level",
     "marks_come_from_the_progress_store",
     "an_empty_catalogue_has_no_cursor",
+    "tabs_keep_their_own_cursor",
+    "an_empty_tab_has_no_cursor",
 } }
 
 local function ids_of(m)
@@ -83,6 +86,42 @@ function M.an_empty_catalogue_has_no_cursor()
     menu.move(m, 1)          -- must not raise on an empty menu
     menu.move(m, -1)
     H.expect(menu.current(m) == nil, "moving an empty menu stays empty")
+end
+
+local function a_custom_level(id, name)
+    return doc.level(doc.blank(id, name))
+end
+
+function M.tabs_keep_their_own_cursor()
+    local mine = a_custom_level("my-level", "Mine")
+    local m = menu.new(levels.ALL, { mine }, nil)
+    H.expect(menu.count(m) == 7, "the campaign tab holds the shipped levels")
+    H.expect(menu.current_tab(m) == "campaign", "and is the one you start on")
+
+    menu.move(m, 1)
+    menu.move(m, 1)
+    local campaign_row = menu.current(m).id
+
+    H.expect(menu.switch_tab(m, "custom"), "the custom tab exists")
+    H.expect(menu.count(m) == 1, "with the imported level")
+    H.expect(menu.current(m).id == "my-level", "which is the one under the cursor")
+
+    menu.switch_tab(m, "campaign")
+    H.expect(menu.current(m).id == campaign_row, "and the campaign cursor did not move")
+    H.expect(menu.switch_tab(m, "nope") == false, "a tab that does not exist is refused")
+end
+
+function M.an_empty_tab_has_no_cursor()
+    local m = menu.new(levels.ALL, {}, nil)
+    menu.switch_tab(m, "custom")
+    H.expect(menu.count(m) == 0, "no imports, no rows")
+    H.expect(menu.current(m) == nil, "and nothing to open")
+    menu.move(m, 1)                       -- must not raise
+    H.expect(menu.current(m) == nil, "moving an empty tab stays empty")
+
+    H.expect(menu.cycle_tab(m, 1) == true, "cycling wraps")
+    H.expect(menu.current_tab(m) == "campaign", "from the custom tab back to the campaign")
+    H.expect(menu.current(m) ~= nil, "where there is something to open")
 end
 
 return M

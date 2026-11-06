@@ -21,6 +21,7 @@ local M = { order = {
     "to_lua_produces_a_loadable_table",
     "a_custom_level_is_stored_and_scaned_back",
     "a_broken_custom_file_is_a_warning_not_a_crash",
+    "a_deleted_custom_level_leaves_the_index",
 } }
 
 function M.every_shipped_level_round_trips()
@@ -194,6 +195,23 @@ function M.a_broken_custom_file_is_a_warning_not_a_crash()
     local got, warnings = levelfmt.scan_custom(disk)
     H.expect(#got == 1, "the readable level survives")
     H.expect(#warnings == 1, "the missing file is reported: " .. tostring(warnings[1]))
+end
+
+function M.a_deleted_custom_level_leaves_the_index()
+    local disk = fixtures.fake_disk()
+    levelfmt.save_custom(disk, levels.get(1))
+    levelfmt.save_custom(disk, levels.get(2))
+
+    levelfmt.delete_custom(disk, "straight-back")
+    local left, warnings = levelfmt.scan_custom(disk)
+    H.expect(#left == 1, "one level left: " .. #left)
+    H.expect(left[1].id == "long-way-back", "and it is the other one")
+    H.expect(#warnings == 0, "with no dangling index entry: " .. tostring(warnings[1]))
+    H.expect(disk.files[levelfmt.CUSTOM_DIR .. "straight-back.tylevel"] == nil, "the file is gone")
+
+    levelfmt.delete_custom(disk, "long-way-back")
+    local none = levelfmt.scan_custom(disk)
+    H.expect(#none == 0, "deleting the last one empties the tab")
 end
 
 return M

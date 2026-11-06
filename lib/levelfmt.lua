@@ -546,6 +546,17 @@ function M.save_custom(disk, level)
     return name
 end
 
+function M.delete_custom(disk, id)
+    if not (disk and id) then return false end
+    disk.remove(M.CUSTOM_DIR .. id .. ".tylevel")
+    local keep = {}
+    for _, other in ipairs(M.custom_ids(disk)) do
+        if other ~= id then keep[#keep + 1] = other end
+    end
+    disk.write(M.CUSTOM_INDEX, #keep > 0 and (table.concat(keep, "\n") .. "\n") or "")
+    return true
+end
+
 -- Every readable custom level, plus a warning per file that is not. A broken
 -- import must not take the rest of the list with it.
 function M.scan_custom(disk)

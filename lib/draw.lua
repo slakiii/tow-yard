@@ -585,6 +585,11 @@ function D.menu(model, game)
     local W, H = love.graphics.getDimensions()
     local x = 64
     local y = 44
+    -- ask the model, never its fields: the rows belong to the current tab, and
+    -- reading model.rows directly was how a whole screen went blank after tabs
+    -- were introduced
+    local rows = menu.rows(model)
+    local cursor = model.index[model.tab]
 
     love.graphics.setFont(fonts.big)
     set(D.C.text)
@@ -595,7 +600,7 @@ function D.menu(model, game)
     love.graphics.print("reverse the caravan into the bay", x + 3, y + 44)
 
     local parked, total = 0, 0
-    for _, lvl in ipairs(model.rows or {}) do
+    for _, lvl in ipairs(rows) do
         total = total + 1
         if menu.mark(model, lvl).completed then parked = parked + 1 end
     end
@@ -604,9 +609,25 @@ function D.menu(model, game)
         love.graphics.print(text, W - x - fonts.small:getWidth(text), y + 44)
     end
 
-    y = y + 100
+    -- the tabs. Two words, one of them underlined: the cheapest way to say "there
+    -- is another list over here" without a menu inside a menu.
+    local tabs = { { "campaign", "Campaign" }, { "custom", "Custom levels" } }
+    local tx = x
+    for _, t in ipairs(tabs) do
+        local active = (model.tab == t[1])
+        love.graphics.setFont(fonts.mid)
+        set(active and D.C.text or D.C.dim, active and 1 or 0.7)
+        love.graphics.print(t[2], tx, y + 74)
+        if active then
+            set(D.C.bay_line)
+            love.graphics.rectangle("fill", tx, y + 100, fonts.mid:getWidth(t[2]), 2)
+        end
+        tx = tx + fonts.mid:getWidth(t[2]) + 34
+    end
+
+    y = y + 130
     local last_series = nil
-    for i, lvl in ipairs(model.rows or {}) do
+    for i, lvl in ipairs(rows) do
         if lvl.series ~= last_series then
             if last_series ~= nil then y = y + 12 end
             love.graphics.setFont(fonts.small)
@@ -617,7 +638,7 @@ function D.menu(model, game)
         end
 
         local mark = menu.mark(model, lvl)
-        local selected = (i == model.index)
+        local selected = (i == cursor)
         local right = W - x - 10
 
         if selected then
@@ -659,16 +680,35 @@ function D.menu(model, game)
 
     if total == 0 then
         love.graphics.setFont(fonts.mid)
-        set(D.C.dim)
-        love.graphics.print("No levels yet.", x, y)
+        set(D.C.text, 0.9)
+        if model.tab == "custom" then
+            love.graphics.print("No custom levels yet.", x, y)
+            love.graphics.setFont(fonts.small)
+            set(D.C.dim)
+            love.graphics.print("I pastes a share code, or drop a .towyard file on the window.", x, y + 30)
+            love.graphics.print("They live in " .. love.filesystem.getSaveDirectory() .. "/custom/", x, y + 50)
+        else
+            love.graphics.print("No levels.", x, y)
+        end
     end
 
     love.graphics.setFont(fonts.small)
     set(D.C.dim, 0.9)
     local pad = game and game.input and game.input.last_device == "gamepad"
-    local hint = pad
-        and "D-pad or stick choose    A open    B quit"
-        or "W/S choose    Enter open    Esc quit"
+    local hint
+    if game and game.confirm_delete then
+        set(D.C.warn, 0.95)
+        hint = "delete " .. tostring(game.confirm_delete.name) .. "?    Enter confirms    Esc cancels"
+        love.graphics.print(hint, x, H - 30)
+        return
+    end
+    if pad then
+        hint = "D-pad choose    A open    LB/RB tab    B quit"
+    elseif model.tab == "custom" then
+        hint = "W/S choose    Enter open    Tab switch tab    X delete    I paste a code    Esc quit"
+    else
+        hint = "W/S choose    Enter open    Tab switch tab    Esc quit"
+    end
     love.graphics.print(hint, x, H - 30)
 end
 
