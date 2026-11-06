@@ -10,6 +10,10 @@
 -- already demands a plan. Anything you could point at as one object sits clear
 -- of the winning line, so the manoeuvre stays the level and the scenery only
 -- explains why the place is tight (tests/test_levels.lua enforces both).
+--
+-- Par on "Fire side", "Round the back" and "Clean line" is provisional: it is a
+-- machine line (a headless audit probe that reverses in and parks) times ~1.5,
+-- not a playtest. Re-measure it after the first human run and never scale it.
 
 local props = require("lib.props")
 
@@ -88,6 +92,100 @@ local RAW = {
         },
         par = 26,
         apron = 0.7,
+    },
+    {
+        name = "Fire side",
+        hint = "The bay is off to the left. Swing the caravan's tail toward the bay, not toward the fire.",
+        bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
+        spawn = { x = 50, y = 20, th = 0 },
+        bay = { x = 18, y = 21.5, w = 9, h = 4, angle = 0, tol = math.rad(6) },
+        walls = {
+            { x = 30, y = 13.7, w = 52, h = 0.7, kind = "hedge" },
+            { x = 30, y = 30.3, w = 52, h = 0.7, kind = "hedge" },
+            { x = 8, y = 36, kind = "building" },
+            { x = 24, y = 36, kind = "rv" },
+            { x = 44, y = 35.5, kind = "tent" },
+            { x = 14, y = 6, kind = "pool" },
+            { x = 34, y = 6.5, kind = "car" },
+        },
+        cones = {
+            -- the fire sits on the side the tail must NOT swing to
+            { x = 29, y = 15.4, kind = "firepit" },
+            { x = 31.6, y = 15.5, kind = "chair" },
+            { x = 23, y = 25.9, kind = "chair" },
+        },
+        surfaces = {
+            { x = 30, y = 20, w = 60, h = 20, kind = "gravel" },
+            { x = 30, y = 7, w = 60, h = 12, kind = "grass" },
+            { x = 30, y = 34.5, w = 60, h = 11, kind = "grass" },
+            { x = 8, y = 36, w = 10, h = 6, kind = "deck" },
+        },
+        par = 30,
+        apron = 2.0,
+    },
+    {
+        name = "Round the back",
+        hint = "The bay is behind the gate. Line the rig up before it, then reverse straight through.",
+        bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
+        spawn = { x = 52, y = 20, th = 0 },
+        bay = { x = 12, y = 20, w = 9, h = 4, angle = 0, tol = math.rad(6) },
+        walls = {
+            { x = 30, y = 13.7, w = 54, h = 0.7, kind = "hedge" },
+            { x = 30, y = 26.3, w = 54, h = 0.7, kind = "hedge" },
+            -- the gate: a 5.6 m gap between two stubs, and the caravan is 2.1 m
+            { x = 30, y = 15.45, w = 0.8, h = 3.5, kind = "hedge" },
+            { x = 30, y = 24.55, w = 0.8, h = 3.5, kind = "hedge" },
+            { x = 8, y = 35, kind = "building" },
+            { x = 30, y = 35.5, kind = "rv" },
+            { x = 46, y = 35, kind = "tent" },
+            { x = 12, y = 6, kind = "pool" },
+            { x = 40, y = 6.5, kind = "car" },
+        },
+        cones = {
+            { x = 36, y = 16.8, kind = "cone" },
+            { x = 36, y = 23.2, kind = "cone" },
+            { x = 20, y = 25.3, kind = "chair" },
+        },
+        surfaces = {
+            { x = 30, y = 20, w = 60, h = 16, kind = "gravel" },
+            { x = 30, y = 6.5, w = 60, h = 13, kind = "grass" },
+            { x = 30, y = 33.5, w = 60, h = 13, kind = "grass" },
+            { x = 8, y = 35, w = 9, h = 5, kind = "deck" },
+        },
+        par = 32,
+        apron = 2.0,
+    },
+    {
+        name = "Clean line",
+        hint = "Two fires this time, with a chair run inside them. Thread it without touching anything.",
+        bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
+        spawn = { x = 52, y = 20, th = 0 },
+        bay = { x = 14, y = 20, w = 9, h = 4, angle = 0, tol = math.rad(5) },
+        walls = {
+            { x = 30, y = 14.2, w = 54, h = 0.7, kind = "hedge" },
+            { x = 30, y = 25.8, w = 54, h = 0.7, kind = "hedge" },
+            { x = 8, y = 35, kind = "building" },
+            { x = 26, y = 35.5, kind = "rv" },
+            { x = 40, y = 35.5, kind = "caravan" },
+            { x = 52, y = 35, kind = "tent" },
+            { x = 12, y = 6, kind = "pool" },
+            { x = 36, y = 6.5, kind = "car" },
+        },
+        cones = {
+            { x = 34, y = 16.7, kind = "firepit" },
+            { x = 34, y = 23.3, kind = "firepit" },
+            { x = 27, y = 17.5, kind = "chair" },
+            { x = 27, y = 22.5, kind = "chair" },
+            { x = 21.5, y = 24.6, kind = "chair" },
+        },
+        surfaces = {
+            { x = 30, y = 20, w = 60, h = 16, kind = "gravel" },
+            { x = 30, y = 6.5, w = 60, h = 13, kind = "grass" },
+            { x = 30, y = 33.5, w = 60, h = 13, kind = "grass" },
+            { x = 8, y = 35, w = 9, h = 5, kind = "deck" },
+        },
+        par = 30,
+        apron = 2.0,
     },
 }
 
