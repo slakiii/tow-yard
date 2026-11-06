@@ -85,7 +85,7 @@ function M.levelcheck_rejects_a_bad_level()
     -- save gate and the importer call, and the reason must name the culprit.
     local lvl = levels.get(1)
     local broken = {
-        name = "broken", bounds = lvl.bounds, spawn = lvl.spawn, bay = lvl.bay,
+        id = "broken", name = "broken", bounds = lvl.bounds, spawn = lvl.spawn, bay = lvl.bay,
         walls = { { x = lvl.spawn.x, y = lvl.spawn.y, w = 4, h = 4, kind = "car" } },
         cones = {}, surfaces = {}, par = 10, apron = 0,
     }

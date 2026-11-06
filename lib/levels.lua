@@ -21,8 +21,16 @@ local M = {}
 
 -- Authored data: a prop says what it is (`kind`) and, only when it differs from
 -- the kind's default, how big it is.
+--
+-- `id` is identity: stable forever, what a best time and a ghost are stored
+-- under. `series` + `order` are presentation: which row of the menu the level
+-- sits in and where. Neither reaches the content hash, so re-sorting the
+-- campaign cannot invalidate a run that was driven against the same geometry.
 local RAW = {
     {
+        id = "straight-back",
+        series = "training",
+        order = 1,
         name = "Straight back",
         hint = "Reverse straight back into the bay. The caravan will not stay straight on its own.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -57,6 +65,9 @@ local RAW = {
         apron = 2.0,
     },
     {
+        id = "angled-bay",
+        series = "training",
+        order = 2,
         name = "Angled bay",
         hint = "The bay is sideways. Set the angle up before you commit to the reverse.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -76,6 +87,9 @@ local RAW = {
         apron = 2.0,
     },
     {
+        id = "tight-alley",
+        series = "basics",
+        order = 1,
         name = "Tight alley",
         hint = "Six metres of alley. The caravan's wheels cut inside your line, so watch the inner wall.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -94,6 +108,9 @@ local RAW = {
         apron = 0.7,
     },
     {
+        id = "fire-side",
+        series = "basics",
+        order = 2,
         name = "Fire side",
         hint = "The bay is off to the left. Swing the caravan's tail toward the bay, not toward the fire.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -124,6 +141,9 @@ local RAW = {
         apron = 2.0,
     },
     {
+        id = "round-the-back",
+        series = "tricky",
+        order = 1,
         name = "Round the back",
         hint = "The bay is behind the gate. Line the rig up before it, then reverse straight through.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },
@@ -156,6 +176,9 @@ local RAW = {
         apron = 2.0,
     },
     {
+        id = "clean-line",
+        series = "tricky",
+        order = 2,
         name = "Clean line",
         hint = "Two fires this time, with a chair run inside them. Thread it without touching anything.",
         bounds = { x0 = 0, y0 = 0, x1 = 60, y1 = 40 },

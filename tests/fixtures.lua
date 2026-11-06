@@ -16,4 +16,11 @@ function F.field()
     }
 end
 
+function F.deep_copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, val in pairs(v) do out[k] = F.deep_copy(val) end
+    return out
+end
+
 return F

@@ -57,6 +57,9 @@ end
 
 function M.rules.structure(level)
     local errs = {}
+    if type(level.id) ~= "string" or level.id == "" then
+        errs[#errs + 1] = "no id (a level with no identity cannot keep a best time)"
+    end
     if type(level.name) ~= "string" or level.name == "" then
         errs[#errs + 1] = "no name"
     end
@@ -250,12 +253,18 @@ end
 -- Invariants that need the whole catalogue rather than one level.
 function M.catalog_errors(list)
     local errs = {}
-    local seen = {}
+    local names, ids = {}, {}
     for _, lvl in ipairs(list or {}) do
-        if seen[lvl.name] then
+        if names[lvl.name] then
             errs[#errs + 1] = "duplicate level name: " .. tostring(lvl.name)
         end
-        seen[lvl.name] = true
+        names[lvl.name] = true
+        if lvl.id then
+            if ids[lvl.id] then
+                errs[#errs + 1] = "duplicate level id: " .. tostring(lvl.id)
+            end
+            ids[lvl.id] = true
+        end
     end
     return errs
 end

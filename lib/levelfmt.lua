@@ -17,11 +17,9 @@
 -- key, a non-finite number, an unknown kind or a document over the caps is
 -- refused with a reason. Nothing here executes, allocates per line without a
 -- bound, or trusts a count the file claims about itself.
---
--- NOTE: `id` is validated when present but not yet required -- the shipped
--- levels get their ids in the next task, together with the content hash.
 
 local props = require("lib.props")
+local hash = require("lib.hash")
 
 local M = {}
 
@@ -394,6 +392,7 @@ function M.decode(text)
     end
 
     if not header then return nil, "empty document" end
+    if not level.id then return nil, "no id" end
     if not level.name then return nil, "no name" end
     if not level.bounds then return nil, "no bounds" end
     if not level.spawn then return nil, "no spawn" end
@@ -437,6 +436,19 @@ function M.resolve(level)
         out.surfaces[i] = copy(zone)
     end
     return out
+end
+
+-- The content of a level, and only the content. A ghost and a best time are
+-- keyed to this: moving a wall or changing the par must invalidate them, while
+-- renaming the id or re-sorting the level into another series must not -- those
+-- are identity and presentation, not the thing a run was driven against.
+function M.content_hash(level)
+    local resolved = M.resolve(level)
+    local body = {}
+    for k, v in pairs(resolved) do
+        if k ~= "id" and k ~= "series" and k ~= "order" then body[k] = v end
+    end
+    return hash.sha256(hash.canonical(body))
 end
 
 return M

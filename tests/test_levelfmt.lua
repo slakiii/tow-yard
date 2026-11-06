@@ -6,6 +6,7 @@
 local H = require("tests.helper")
 local levels = require("lib.levels")
 local levelfmt = require("lib.levelfmt")
+local fixtures = require("tests.fixtures")
 
 local M = { order = {
     "every_shipped_level_round_trips",
@@ -14,6 +15,9 @@ local M = { order = {
     "rejects_a_document_with_too_many_props",
     "accepts_crlf_line_endings",
     "quotes_and_newlines_survive_the_text",
+    "decode_requires_an_id",
+    "hash_covers_content_not_identity",
+    "hash_is_stable_across_a_round_trip",
 } }
 
 function M.every_shipped_level_round_trips()
@@ -103,6 +107,48 @@ function M.quotes_and_newlines_survive_the_text()
     H.expect(lvl ~= nil, "an escaped hint must parse: " .. tostring(err))
     H.expect(lvl.hint == raw, "the hint must come back exactly, got: " .. tostring(lvl.hint))
     H.expect(levelfmt.encode(lvl):find(doc, 1, true) ~= nil, "re-encoding must reproduce the escapes")
+end
+
+function M.decode_requires_an_id()
+    -- Identity is what a best time and a ghost are stored under; a level with no
+    -- id cannot remember anything, so the format refuses it rather than letting
+    -- the player find out later that progress was written to nowhere.
+    local text = levelfmt.encode(levels.get(1))
+    local no_id = text:gsub("\nid [^\n]*", "")
+    local lvl, err = levelfmt.decode(no_id)
+    H.expect(lvl == nil, "a document with no id must be refused")
+    H.expect(tostring(err):find("id", 1, true) ~= nil, "reason should name the id, got: " .. tostring(err))
+end
+
+function M.hash_covers_content_not_identity()
+    local lvl = levels.get(1)
+    local before = levelfmt.content_hash(lvl)
+    H.expect(type(before) == "string" and #before == 64, "the hash must be a sha256 hex digest")
+
+    local bigger = fixtures.deep_copy(lvl)
+    bigger.walls[1].h = bigger.walls[1].h + 0.01
+    H.expect(levelfmt.content_hash(bigger) ~= before, "a geometry change must change the hash")
+
+    local cheaper = fixtures.deep_copy(lvl)
+    cheaper.par = cheaper.par - 1
+    H.expect(levelfmt.content_hash(cheaper) ~= before, "a par change must change the hash")
+
+    local moved = fixtures.deep_copy(lvl)
+    moved.series, moved.order = "moved", 99
+    H.expect(levelfmt.content_hash(moved) == before, "re-sorting a level must not invalidate a ghost")
+
+    local renamed = fixtures.deep_copy(lvl)
+    renamed.id = "somewhere-else"
+    H.expect(levelfmt.content_hash(renamed) == before, "the id is identity, not content")
+end
+
+function M.hash_is_stable_across_a_round_trip()
+    for _, lvl in ipairs(levels.ALL) do
+        local back, err = levelfmt.decode(levelfmt.encode(lvl))
+        H.expect(back ~= nil, lvl.name .. ": " .. tostring(err))
+        H.expect(levelfmt.content_hash(back) == levelfmt.content_hash(lvl),
+                 lvl.name .. ": the document must carry the whole content of the level")
+    end
 end
 
 return M
