@@ -13,6 +13,7 @@ local MODULES = {
     "tests/test_audit",
     "tests/test_input",
     "tests/test_hash",
+    "tests/test_levelfmt",
 }
 
 local function runModule(name)

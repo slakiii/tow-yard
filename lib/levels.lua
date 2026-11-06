@@ -15,7 +15,7 @@
 -- machine line (a headless audit probe that reverses in and parks) times ~1.5,
 -- not a playtest. Re-measure it after the first human run and never scale it.
 
-local props = require("lib.props")
+local levelfmt = require("lib.levelfmt")
 
 local M = {}
 
@@ -189,43 +189,12 @@ local RAW = {
     },
 }
 
-local function copy(t)
-    local out = {}
-    for k, v in pairs(t) do out[k] = v end
-    return out
-end
-
--- Fill every prop's size from its kind once, at load, so the session, the
--- renderer and the level invariants all read explicit numbers while the
--- authoring data stays terse. Defaults live in lib/props.lua and nowhere else.
--- An unknown kind is left unfilled on purpose: props.check names it, and the
--- suite fails before a level like that can be played.
-local function resolve(level)
-    local out = copy(level)
-    out.walls = {}
-    for i, wall in ipairs(level.walls or {}) do
-        local fp = props.footprint(wall)
-        local e = copy(wall)
-        if fp then e.w, e.h = fp.w, fp.h else e.w, e.h = wall.w, wall.h end
-        out.walls[i] = e
-    end
-    out.cones = {}
-    for i, cone in ipairs(level.cones or {}) do
-        local fp = props.footprint(cone)
-        local e = copy(cone)
-        e.r = fp and fp.r or cone.r
-        out.cones[i] = e
-    end
-    out.surfaces = {}
-    for i, zone in ipairs(level.surfaces or {}) do
-        out.surfaces[i] = copy(zone)
-    end
-    return out
-end
-
+-- Defaults are filled by the format layer: the same resolve() that turns a
+-- decoded document into a level, so a shipped level and an imported one cannot
+-- disagree about what a hedge's default size is.
 M.ALL = {}
 for i, level in ipairs(RAW) do
-    M.ALL[i] = resolve(level)
+    M.ALL[i] = levelfmt.resolve(level)
 end
 
 function M.get(i)
