@@ -19,6 +19,7 @@ local MODULES = {
     "tests/test_run",
     "tests/test_share",
     "tests/test_edit_doc",
+    "tests/test_edit_undo",
 }
 
 local function runModule(name)
