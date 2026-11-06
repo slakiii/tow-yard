@@ -16,6 +16,7 @@
 -- caller that forgot cannot put a value in the file that the sim never saw.
 
 local session = require("lib.session")
+local rig = require("lib.rig")
 local levelfmt = require("lib.levelfmt")
 local hash = require("lib.hash")
 
@@ -61,6 +62,60 @@ end
 
 function M.frames(run)
     return #run.frames
+end
+
+-- The drive the run describes. The break on park is defence in depth: session
+-- already freezes a parked rig, but a replay should not depend on that, and a
+-- mutation test showed the guard is invisible to the suite (the session is what
+-- actually guarantees it) -- so this comment is the record of that finding.
+function M.replay(level, run)
+    local s = session.new(level)
+    for _, f in ipairs(run.frames) do
+        if s.parked then break end
+        session.update(s, f, rig.STEP)
+    end
+    return s
+end
+
+-- The same drive, sampled, for drawing a ghost trail: computing the whole line
+-- up front costs one replay (milliseconds) and lets the trail be revealed as the
+-- player advances instead of storing a pose per frame twice.
+function M.trace(level, run, every)
+    every = every or 6
+    local s = session.new(level)
+    local points = {}
+    for i, f in ipairs(run.frames) do
+        if s.parked then break end
+        session.update(s, f, rig.STEP)
+        if i % every == 0 then
+            local cx, cy = rig.coupling_xy(s.rig)
+            points[#points + 1] = {
+                cx - rig.CARAVAN.length * math.cos(s.rig.ph),
+                cy - rig.CARAVAN.length * math.sin(s.rig.ph),
+            }
+        end
+    end
+    return points, s
+end
+
+-- Is this run a park on THIS level, at THIS build? The claimed time is never
+-- consulted: the answer is the replay's. A run recorded against other geometry
+-- or another simulation is refused before it is replayed at all.
+function M.verify(level, run)
+    if run.level_id ~= level.id then
+        return false, "this run belongs to a different level"
+    end
+    if run.content ~= levelfmt.content_hash(level) then
+        return false, "this run was recorded on different geometry (the level has changed)"
+    end
+    if run.build ~= hash.build_hash() then
+        return false, "this run was recorded on a different build"
+    end
+    local s = M.replay(level, run)
+    if not s.parked then
+        return false, "this run does not park on this build"
+    end
+    return true, s.final
 end
 
 -- ------------------------------------------------------------- serialisation

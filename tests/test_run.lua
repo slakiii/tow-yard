@@ -5,6 +5,7 @@
 local H = require("tests.helper")
 local levels = require("lib.levels")
 local session = require("lib.session")
+local rig = require("lib.rig")
 local run = require("lib.run")
 local codec = require("lib.codec").love_data()
 
@@ -19,6 +20,12 @@ local M = { order = {
     "a_body_of_the_wrong_length_is_rejected",
     "a_frame_count_over_the_cap_is_rejected",
     "a_bad_run_header_is_rejected",
+    "replay_reproduces_the_drive_exactly",
+    "replay_stops_at_the_park",
+    "verify_accepts_a_real_park",
+    "verify_refuses_other_geometry_and_other_builds",
+    "verify_refuses_a_run_that_does_not_park",
+    "verify_ignores_the_claimed_time",
 } }
 
 local DT = 1 / 120
@@ -149,6 +156,104 @@ function M.a_bad_run_header_is_rejected()
     local bad = text:gsub("^TOWYARD RUN 1", "TOWYARD RUN 9")
     H.expect(run.decode(bad, codec) == nil, "an unknown version must be refused")
     H.expect(run.decode(text) == nil, "and a missing codec is an error, not a crash")
+end
+
+-- Drive level 1 to a real park, recording. The run every verification test
+-- needs, produced the way the game produces one.
+local function drive_level_1()
+    local lvl = levels.get(1)
+    local s, r = session.new(lvl), run.new(lvl)
+    local stop_x = lvl.bay.x - (rig.CARAVAN.coupling - rig.CARAVAN.length / 2)
+    local t = 0
+    while t < 60 and not s.parked do
+        local inp = (s.rig.x > stop_x)
+            and { steer = 0, throttle = 0, brake = 1, handbrake = false }
+            or { steer = 0, throttle = 0, brake = 0, handbrake = true }
+        run.record(r, inp)
+        session.update(s, inp, DT)
+        t = t + DT
+    end
+    run.finish(r, s)
+    H.expect(s.parked, "fixture: level 1 must park")
+    return lvl, s, r
+end
+
+function M.replay_reproduces_the_drive_exactly()
+    -- A curved drive, not a straight line: the steering changes every step, so a
+    -- lossy document or a rounding step would show up immediately.
+    local lvl = levels.get(1)
+    local s, r = session.new(lvl), run.new(lvl)
+    for i = 1, 900 do
+        local inp = { steer = math.sin(i / 90) * 0.6, throttle = 0, brake = 1, handbrake = false }
+        run.record(r, inp)
+        session.update(s, inp, DT)
+    end
+    local back = run.decode(run.encode(r, codec), codec)
+    H.expect(back ~= nil, "fixture: the run must survive the document")
+    local again = run.replay(lvl, back)
+    H.expect(again.rig.x == s.rig.x, "x must match exactly, not nearly")
+    H.expect(again.rig.y == s.rig.y, "y must match exactly")
+    H.expect(again.rig.th == s.rig.th, "th must match exactly")
+    H.expect(again.rig.ph == s.rig.ph, "ph must match exactly")
+    H.expect(again.t == s.t, "the clock must match exactly")
+end
+
+function M.replay_stops_at_the_park()
+    -- A shell that keeps recording after the park, or a hand-edited file, must
+    -- not move the ghost: the park ends the drive.
+    local lvl, s, r = drive_level_1()
+    local px, py = s.rig.x, s.rig.y
+    for _ = 1, 200 do
+        r.frames[#r.frames + 1] = { steer = 0.5, throttle = 1, brake = 0, handbrake = false }
+    end
+    local again = run.replay(lvl, r)
+    H.expect(again.parked, "the replay is still parked")
+    H.expect(again.rig.x == px and again.rig.y == py, "and the trailing frames did not move it")
+end
+
+function M.verify_accepts_a_real_park()
+    local lvl, s, r = drive_level_1()
+    local ok, final = run.verify(lvl, run.decode(run.encode(r, codec), codec))
+    H.expect(ok == true, tostring(final))
+    H.expect(math.abs(final.time - s.final.time) < 1e-9, "the replay's final is the drive's final")
+end
+
+function M.verify_refuses_other_geometry_and_other_builds()
+    local lvl, _, r = drive_level_1()
+    local copy = run.decode(run.encode(r, codec), codec)
+
+    copy.content = string.rep("ab", 32)
+    local ok, why = run.verify(lvl, copy)
+    H.expect(ok == false and tostring(why):find("geometry") ~= nil, "geometry: " .. tostring(why))
+
+    copy.content = r.content
+    copy.build = string.rep("cd", 32)
+    ok, why = run.verify(lvl, copy)
+    H.expect(ok == false and tostring(why):find("build") ~= nil, "build: " .. tostring(why))
+
+    copy.build = r.build
+    copy.level_id = "clean-line"
+    ok, why = run.verify(lvl, copy)
+    H.expect(ok == false and tostring(why):find("different level") ~= nil, "level: " .. tostring(why))
+end
+
+function M.verify_refuses_a_run_that_does_not_park()
+    local lvl = levels.get(1)
+    local r = run.new(lvl)
+    for _ = 1, 20 do run.record(r, { steer = 0, throttle = 0, brake = 1, handbrake = false }) end
+    local ok, why = run.verify(lvl, r)
+    H.expect(ok == false, "twenty frames of reversing is not a park")
+    H.expect(tostring(why):find("does not park") ~= nil, "and says so: " .. tostring(why))
+end
+
+function M.verify_ignores_the_claimed_time()
+    local lvl, s, r = drive_level_1()
+    r.time = 9.00                        -- a lie in the header
+    local ok, final = run.verify(lvl, run.decode(run.encode(r, codec), codec))
+    H.expect(ok, tostring(final))
+    H.expect(math.abs(final.time - s.final.time) < 1e-9,
+             "the recomputed time must win, got " .. tostring(final.time))
+    H.expect(math.abs(final.time - 9.00) > 1, "and the header's 9.00 must never be reported")
 end
 
 return M
