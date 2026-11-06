@@ -510,6 +510,62 @@ function M.resolve(level)
     return out
 end
 
+-- ------------------------------------------------------------- custom levels
+
+-- Imported levels live in the save directory, listed by an index of ids. The
+-- index rather than a directory scan because the disk interface stays three
+-- calls wide (read/write/remove) and a fake disk in a test needs no directory
+-- emulation; the cost is that a file with no index entry is invisible, which is
+-- the failure mode that cannot crash anything.
+M.CUSTOM_DIR = "custom/"
+M.CUSTOM_INDEX = "custom/index.txt"
+
+function M.custom_ids(disk)
+    local ids = {}
+    local raw = disk and disk.read(M.CUSTOM_INDEX)
+    for line in (raw or ""):gmatch("[^\n]+") do
+        local id = line:match("^%s*([%w%-]+)%s*$")
+        if id then ids[#ids + 1] = id end
+    end
+    return ids
+end
+
+function M.save_custom(disk, level)
+    if not disk then return nil, "no disk" end
+    if not (level and level.id) then return nil, "a level with no id cannot be stored" end
+    if disk.mkdir then disk.mkdir(M.CUSTOM_DIR) end
+    local name = M.CUSTOM_DIR .. level.id .. ".tylevel"
+    disk.write(name, M.encode(level))
+
+    local ids = M.custom_ids(disk)
+    for _, id in ipairs(ids) do
+        if id == level.id then return name end
+    end
+    ids[#ids + 1] = level.id
+    disk.write(M.CUSTOM_INDEX, table.concat(ids, "\n") .. "\n")
+    return name
+end
+
+-- Every readable custom level, plus a warning per file that is not. A broken
+-- import must not take the rest of the list with it.
+function M.scan_custom(disk)
+    local levels, warnings = {}, {}
+    for _, id in ipairs(M.custom_ids(disk)) do
+        local text = disk.read(M.CUSTOM_DIR .. id .. ".tylevel")
+        if not text then
+            warnings[#warnings + 1] = "missing file for " .. id
+        else
+            local lvl, err = M.decode(text)
+            if lvl then
+                levels[#levels + 1] = lvl
+            else
+                warnings[#warnings + 1] = id .. ": " .. tostring(err)
+            end
+        end
+    end
+    return levels, warnings
+end
+
 -- The content of a level, and only the content. A ghost and a best time are
 -- keyed to this: moving a wall or changing the par must invalidate them, while
 -- renaming the id or re-sorting the level into another series must not -- those

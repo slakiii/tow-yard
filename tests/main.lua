@@ -17,6 +17,7 @@ local MODULES = {
     "tests/test_progress",
     "tests/test_menu",
     "tests/test_run",
+    "tests/test_share",
 }
 
 local function runModule(name)

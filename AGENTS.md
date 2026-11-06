@@ -61,6 +61,12 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   and contains no rules. It also owns the **mode switch** (`menu` / `play`):
   each mode has its own update/draw/keypressed, and one dispatch block at the
   bottom is the only place that knows more than one screen exists.
+- A run is what makes a ghost honest: `lib/run.lua` records one quantised frame
+  per physics step, serialises it to four bytes per frame, replays it through a
+  fresh session, and `verify` refuses a run from other geometry or another build
+  **before** it is drawn. Never trust a header's claimed time; the replay is the
+  answer. `lib/share.lua` bundles a level and a run for one paste, and
+  `lib/codec.lua` is the only place zlib/base64 is touched.
 - Content is data, identity is a hash: `lib/levelfmt.lua` encodes/decodes a
   level as portable text and hashes its *content* (geometry, props, par — not
   `id`/`series`/`order`), `lib/levelcheck.lua` says whether a level is

@@ -543,6 +543,13 @@ function D.hud(s, game)
     set(D.C.dim, 0.9)
     love.graphics.print(hint, 24, H - 26)
 
+    if game and game.toast and game.toast.expires and love.timer.getTime() < game.toast.expires then
+        love.graphics.setFont(fonts.small)
+        set(D.C.text, 0.92)
+        local t = game.toast.text
+        love.graphics.print(t, W / 2 - fonts.small:getWidth(t) / 2, 26)
+    end
+
     if game.paused then
         love.graphics.setFont(fonts.mid)
         set(D.C.text)

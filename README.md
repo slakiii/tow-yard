@@ -13,7 +13,9 @@ love . --audit 4  # is level 4 parkable at all? exit 0 = a line exists
 ```
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
-`R` reset, `P` pause, `F1` debug, `Esc` quit.
+`R` reset, `P` pause, `H` ghost (off / trail / rig), `Y` copy a share code,
+`I` import the clipboard, `F1` debug, `Esc` back to the level select.
+Drop a `.towyard` file on the window to import it.
 
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 `D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,
@@ -50,6 +52,9 @@ Plans live in `.hermes/plans/`:
 | `lib/hash.lua` | canonical dump, sha256, build stamp |
 | `lib/progress.lua` | best time, stars and ghosts, over an injected disk (pure) |
 | `lib/menu.lua` | level select model: rows, cursor, marks (pure) |
+| `lib/run.lua` | record / serialise / replay / verify a run (pure) |
+| `lib/share.lua` | share bundles and `TY1:` codes (pure) |
+| `lib/codec.lua` | zlib + base64 over love.data, passed into the format |
 | `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |
 | `lib/draw.lua` | flat-colour renderer, HUD, result card, level select |
 | `main.lua` | thin shell: callbacks, mode switch, camera, fixed-timestep loop |

@@ -12,6 +12,7 @@ local run = require("lib.run")
 local menu = require("lib.menu")
 local levelfmt = require("lib.levelfmt")
 local codec = require("lib.codec")
+local share = require("lib.share")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
@@ -44,6 +45,8 @@ local game = {
     gain = nil,
     ghost = nil,
     ghost_mode = "trail",     -- off | trail | rig
+    custom = {},              -- imported levels, beside the campaign
+    toast = nil,
     input = input.new_state(),
 }
 
@@ -58,9 +61,9 @@ local function camera(lvl)
     return scale, ox, oy
 end
 
-local function load_level(n)
-    game.index = n
-    game.level = levels.get(n)
+local function load_level_object(lvl)
+    game.index = levels.find(lvl.id) or game.index
+    game.level = lvl
     game.s = session.new(game.level)
     game.run = run.new(game.level)
     game.acc = 0
@@ -86,6 +89,64 @@ local function load_level(n)
     end
 end
 
+local function load_level(n)
+    load_level_object(levels.get(n))
+end
+
+local function say(text, seconds)
+    game.toast = { text = text, expires = love.timer.getTime() + (seconds or 4) }
+end
+
+-- A share string from anywhere: the clipboard, a dropped file, eventually a
+-- server. One path, so the three transports cannot behave differently.
+local function import_text(text)
+    local got, err = share.unpack(text, game.codec)
+    if not got then
+        say("import failed: " .. tostring(err), 6)
+        return
+    end
+
+    if got.level then
+        local name = levelfmt.save_custom(disk, got.level)
+        if not name then
+            say("could not store that level", 6)
+            return
+        end
+        if got.run and run.verify(got.level, got.run) then
+            progress.put_ghost(game.progress, got.level, run.encode(got.run, game.codec))
+        end
+        game.custom = levelfmt.scan_custom(disk)
+        -- open it: an imported level you cannot play is a download, not a level
+        load_level_object(got.level)
+        game.mode = MODE.play
+        say("imported " .. tostring(got.level.name))
+    elseif got.run then
+        local ok, why = run.verify(game.level, got.run)
+        if ok then
+            progress.put_ghost(game.progress, game.level, run.encode(got.run, game.codec))
+            load_level(game.index)
+            say("rival ghost loaded")
+        else
+            say("that run does not fit this level: " .. tostring(why), 6)
+        end
+    end
+end
+
+-- The code carries the level too when the level is not shipped, or the
+-- recipient would get a run for a level they do not have.
+local function export_share()
+    local custom = levels.find(game.level.id) == nil
+    local r = game.s and game.s.parked and game.run or nil
+    local text = share.bundle(custom and game.level or nil, r, game.codec, "user")
+    if not text then
+        say("nothing to share yet", 4)
+        return
+    end
+    local code = share.code(text, game.codec)
+    love.system.setClipboardText(code)
+    say(string.format("share code copied (%d chars)", #code))
+end
+
 -- The ghost advances with the player's own step count, never with wall-clock
 -- time: pausing must not let it drive off.
 local function advance_ghost()
@@ -101,15 +162,14 @@ end
 -- The model is rebuilt on entry so the marks are what the store says now: a park
 -- made a second ago must not still read as unplayed.
 local function open_menu()
-    game.menu = menu.new(levels.ALL, {}, game.progress)
+    game.menu = menu.new(levels.ALL, game.custom, game.progress)
     game.mode = MODE.menu
 end
 
 local function open_selected()
     local lvl = menu.confirm(game.menu)
-    local index = lvl and levels.find(lvl.id)
-    if not index then return end
-    load_level(index)
+    if not lvl then return end
+    load_level_object(lvl)
     game.mode = MODE.play
 end
 
@@ -193,6 +253,11 @@ function love.load(args)
     input.init(game.input)
     game.codec = codec.love_data()
     game.progress = smoke.enabled and smoke_progress() or progress.open(disk)
+    if not smoke.enabled then
+        local imported, warnings = levelfmt.scan_custom(disk)
+        game.custom = imported
+        for _, w in ipairs(warnings) do print("custom: " .. w) end
+    end
     load_level(game.index)
     -- the smoke harness drives play frames itself; a normal launch starts on the
     -- title screen
@@ -361,6 +426,8 @@ local function menu_keypressed(key)
         menu.move(game.menu, 1)
     elseif key == "return" or key == "kpenter" or key == "space" then
         open_selected()
+    elseif key == "i" then
+        import_text(love.system.getClipboardText() or "")
     end
 end
 
@@ -373,6 +440,10 @@ local function play_keypressed(key)
         game.guide = not game.guide
     elseif key == "p" then
         game.paused = not game.paused
+    elseif key == "y" then
+        export_share()
+    elseif key == "i" then
+        import_text(love.system.getClipboardText() or "")
     elseif key == "h" then
         game.ghost_mode = (game.ghost_mode == "off" and "trail")
             or (game.ghost_mode == "trail" and "rig") or "off"
@@ -395,6 +466,13 @@ end
 
 function love.resize()
     game.scale, game.ox, game.oy = camera(game.level)
+end
+
+function love.filedropped(file)
+    file:open("r")
+    local text = file:read()
+    file:close()
+    if text then import_text(text) else say("that file could not be read", 6) end
 end
 
 function love.joystickadded()

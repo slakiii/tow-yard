@@ -19,6 +19,8 @@ local M = { order = {
     "hash_covers_content_not_identity",
     "hash_is_stable_across_a_round_trip",
     "to_lua_produces_a_loadable_table",
+    "a_custom_level_is_stored_and_scaned_back",
+    "a_broken_custom_file_is_a_warning_not_a_crash",
 } }
 
 function M.every_shipped_level_round_trips()
@@ -166,6 +168,32 @@ function M.to_lua_produces_a_loadable_table()
         H.expect(levelfmt.content_hash(t) == levelfmt.content_hash(lvl),
                  lvl.name .. ": the block must resolve to the same content")
     end
+end
+
+function M.a_custom_level_is_stored_and_scaned_back()
+    local disk = fixtures.fake_disk()
+    local lvl = levels.get(2)
+    local name = levelfmt.save_custom(disk, lvl)
+    H.expect(name == "custom/" .. lvl.id .. ".tylevel", "stored under its id: " .. tostring(name))
+    H.expect(disk.files[levelfmt.CUSTOM_INDEX] ~= nil, "and listed in the index")
+
+    levelfmt.save_custom(disk, lvl)          -- twice: the index must not grow
+    local got, warnings = levelfmt.scan_custom(disk)
+    H.expect(#got == 1, "one level, listed once: " .. #got)
+    H.expect(#warnings == 0, tostring(warnings[1]))
+    H.expect(got[1].id == lvl.id, "with its id")
+    H.expect(levelfmt.content_hash(got[1]) == levelfmt.content_hash(lvl), "and its content intact")
+end
+
+function M.a_broken_custom_file_is_a_warning_not_a_crash()
+    local disk = fixtures.fake_disk()
+    levelfmt.save_custom(disk, levels.get(1))
+    disk.files[levelfmt.CUSTOM_INDEX] = levelfmt.custom_ids(disk)[1] .. "\ngone\n"
+    disk.files[levelfmt.CUSTOM_DIR .. "custom\1.tylevel"] = nil
+
+    local got, warnings = levelfmt.scan_custom(disk)
+    H.expect(#got == 1, "the readable level survives")
+    H.expect(#warnings == 1, "the missing file is reported: " .. tostring(warnings[1]))
 end
 
 return M
