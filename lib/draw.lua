@@ -687,8 +687,13 @@ function D.ghost(ghost, mode)
         set(D.GHOST, 0.20)
         love.graphics.polygon("fill", flat(rig.caravan_poly(rigged)))
         love.graphics.polygon("fill", flat(rig.car_poly(rigged)))
-        set(D.GHOST, 0.55)
+        -- outline BOTH bodies: a caravan alone reads as a marker, and the point
+        -- of this mode is "that was a rig, and it was not mine"
+        set(D.GHOST, 0.62)
         love.graphics.polygon("line", flat(rig.caravan_poly(rigged)))
+        love.graphics.polygon("line", flat(rig.car_poly(rigged)))
+        local hx, hy = rig.coupling_xy(rigged)
+        love.graphics.circle("fill", hx, hy, 0.16)
         return
     end
 
