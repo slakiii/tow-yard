@@ -11,7 +11,7 @@ local M = { order = { "modules_load", "no_love_calls_at_module_level",
 -- here: they are allowed to touch love.* and are verified by --smoke.
 local PURE = {
     "lib.geom", "lib.rig", "lib.session", "lib.levels", "lib.props",
-    "lib.audit", "lib.levelcheck", "lib.levelfmt", "lib.hash", "lib.progress",
+    "lib.audit", "lib.levelcheck", "lib.levelfmt", "lib.hash", "lib.progress", "lib.run",
 }
 
 function M.modules_load()

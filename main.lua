@@ -8,6 +8,7 @@ local input = require("lib.input")
 local draw = require("lib.draw")
 local audit = require("lib.audit")
 local progress = require("lib.progress")
+local run = require("lib.run")
 local menu = require("lib.menu")
 local levelfmt = require("lib.levelfmt")
 
@@ -55,6 +56,7 @@ local function load_level(n)
     game.index = n
     game.level = levels.get(n)
     game.s = session.new(game.level)
+    game.run = run.new(game.level)
     game.acc = 0
     game.new_best = false
     game.input.steer, game.input.throttle, game.input.brake, game.input.handbrake = 0, 0, 0, false
@@ -168,7 +170,11 @@ local function update_play(dt)
     game.acc = game.acc + math.min(dt, 0.1)
     local steps = 0
     local parked_before = game.s.parked
-    while game.acc >= DT and steps < MAX_STEPS do
+    -- One frame per physics step, recorded BEFORE the step: the frame is the
+    -- input the sim is about to consume. A parked session stops the loop, so the
+    -- run cannot grow while the result card is up.
+    while game.acc >= DT and steps < MAX_STEPS and not game.s.parked do
+        run.record(game.run, game.input)
         session.update(game.s, game.input, DT)
         game.acc = game.acc - DT
         steps = steps + 1
@@ -179,6 +185,7 @@ local function update_play(dt)
     -- game produced (all of its numbers are the sim's own), and the store writes
     -- once, on the transition, not every frame the card is on screen.
     if not parked_before and game.s.parked then
+        run.finish(game.run, game.s)
         local _, improved = progress.record(game.progress, game.level, game.s)
         game.new_best = improved
         progress.save(game.progress)
