@@ -124,6 +124,78 @@ function M.encode(level)
     return table.concat(out, "\n") .. "\n"
 end
 
+-- A level as a lib/levels.lua entry: the editor's "export to the campaign".
+-- Same authored form as the document -- default sizes omitted, angles in
+-- degrees wrapped in math.rad -- because the point is that it pastes into the
+-- data file and reads like the entries already there.
+local function lua_string(s)
+    return string.format("%q", tostring(s or ""))
+end
+
+local function angle_lua(rad)
+    if (rad or 0) == 0 then return "0" end
+    return "math.rad(" .. num(math.deg(rad)) .. ")"
+end
+
+function M.to_lua(level)
+    local out = { "{" }
+    local function add(s) out[#out + 1] = "    " .. s end
+    local function prop(parts) add("    { " .. table.concat(parts, ", ") .. " },") end
+
+    if level.id then add("id = " .. lua_string(level.id) .. ",") end
+    if level.series then add("series = " .. lua_string(level.series) .. ",") end
+    if level.order then add("order = " .. num(level.order) .. ",") end
+    add("name = " .. lua_string(level.name) .. ",")
+    if level.hint then add("hint = " .. lua_string(level.hint) .. ",") end
+
+    local b, sp, bay = level.bounds, level.spawn, level.bay
+    add(string.format("bounds = { x0 = %s, y0 = %s, x1 = %s, y1 = %s },",
+        num(b.x0), num(b.y0), num(b.x1), num(b.y1)))
+    add(string.format("spawn = { x = %s, y = %s, th = %s },",
+        num(sp.x), num(sp.y), angle_lua(sp.th)))
+    add(string.format("bay = { x = %s, y = %s, w = %s, h = %s, angle = %s, tol = %s },",
+        num(bay.x), num(bay.y), num(bay.w), num(bay.h), angle_lua(bay.angle), angle_lua(bay.tol)))
+    add("par = " .. num(level.par) .. ",")
+    if level.apron then add("apron = " .. num(level.apron) .. ",") end
+
+    add("walls = {")
+    for _, w in ipairs(level.walls or {}) do
+        local parts = { "x = " .. num(w.x), "y = " .. num(w.y) }
+        local def = props.get(w.kind)
+        if not (def and def.w == w.w and def.h == w.h) then
+            parts[#parts + 1] = "w = " .. num(w.w)
+            parts[#parts + 1] = "h = " .. num(w.h)
+        end
+        if (w.angle or 0) ~= 0 then parts[#parts + 1] = "angle = " .. angle_lua(w.angle) end
+        parts[#parts + 1] = "kind = " .. lua_string(w.kind)
+        prop(parts)
+    end
+    add("},")
+
+    add("cones = {")
+    for _, c in ipairs(level.cones or {}) do
+        local parts = { "x = " .. num(c.x), "y = " .. num(c.y) }
+        local def = props.get(c.kind)
+        if not (def and def.r == c.r) then parts[#parts + 1] = "r = " .. num(c.r) end
+        parts[#parts + 1] = "kind = " .. lua_string(c.kind)
+        prop(parts)
+    end
+    add("},")
+
+    add("surfaces = {")
+    for _, s in ipairs(level.surfaces or {}) do
+        local parts = { "x = " .. num(s.x), "y = " .. num(s.y),
+                        "w = " .. num(s.w), "h = " .. num(s.h) }
+        if (s.angle or 0) ~= 0 then parts[#parts + 1] = "angle = " .. angle_lua(s.angle) end
+        parts[#parts + 1] = "kind = " .. lua_string(s.kind)
+        prop(parts)
+    end
+    add("},")
+
+    out[#out + 1] = "}"
+    return table.concat(out, "\n")
+end
+
 -- ---------------------------------------------------------------- decoding
 
 local ESCAPES = { ['"'] = '"', ["\\"] = "\\", n = "\n" }

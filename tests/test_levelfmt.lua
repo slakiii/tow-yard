@@ -18,6 +18,7 @@ local M = { order = {
     "decode_requires_an_id",
     "hash_covers_content_not_identity",
     "hash_is_stable_across_a_round_trip",
+    "to_lua_produces_a_loadable_table",
 } }
 
 function M.every_shipped_level_round_trips()
@@ -148,6 +149,22 @@ function M.hash_is_stable_across_a_round_trip()
         H.expect(back ~= nil, lvl.name .. ": " .. tostring(err))
         H.expect(levelfmt.content_hash(back) == levelfmt.content_hash(lvl),
                  lvl.name .. ": the document must carry the whole content of the level")
+    end
+end
+
+function M.to_lua_produces_a_loadable_table()
+    -- The editor must be able to feed the campaign, not only custom levels: the
+    -- dev exports a block and pastes it into lib/levels.lua, whose RAW entry
+    -- shape is the same table. `loadstring` here is on OUR OWN generated text in
+    -- a test; imported content is never loaded.
+    local compile = loadstring or load
+    for _, lvl in ipairs(levels.ALL) do
+        local fn, err = compile("return " .. levelfmt.to_lua(lvl))
+        H.expect(fn ~= nil, lvl.name .. ": the exported block does not compile: " .. tostring(err))
+        local t = fn()
+        H.expect(t.name == lvl.name and #t.walls == #lvl.walls, "the block must describe the level")
+        H.expect(levelfmt.content_hash(t) == levelfmt.content_hash(lvl),
+                 lvl.name .. ": the block must resolve to the same content")
     end
 end
 
