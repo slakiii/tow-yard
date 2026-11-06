@@ -11,6 +11,7 @@ local progress = require("lib.progress")
 local run = require("lib.run")
 local menu = require("lib.menu")
 local levelfmt = require("lib.levelfmt")
+local codec = require("lib.codec")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
@@ -21,6 +22,7 @@ local disk = {
     read = function(name) return love.filesystem.read(name) end,
     write = function(name, data) return love.filesystem.write(name, data) end,
     remove = function(name) return love.filesystem.remove(name) end,
+    mkdir = function(name) return love.filesystem.createDirectory(name) end,
 }
 
 local smoke = { enabled = false, frames = 0, frozen = false }
@@ -37,7 +39,11 @@ local game = {
     debug = false,
     paused = false,
     acc = 0,
+    steps = 0,
     new_best = false,
+    gain = nil,
+    ghost = nil,
+    ghost_mode = "trail",     -- off | trail | rig
     input = input.new_state(),
 }
 
@@ -58,9 +64,38 @@ local function load_level(n)
     game.s = session.new(game.level)
     game.run = run.new(game.level)
     game.acc = 0
+    game.steps = 0
     game.new_best = false
+    game.gain = nil
     game.input.steer, game.input.throttle, game.input.brake, game.input.handbrake = 0, 0, 0, false
     game.scale, game.ox, game.oy = camera(game.level)
+
+    -- The stored best run, verified before it is allowed on screen: a ghost that
+    -- was recorded on other geometry is not a ghost, it is a different level's
+    -- run wearing this level's name.
+    game.ghost = nil
+    if game.progress and game.codec then
+        local text = progress.ghost_text(game.progress, game.level)
+        local g = text and run.decode(text, game.codec)
+        if g and run.verify(game.level, g) then
+            game.ghost = {
+                run = g, trail = run.trace(game.level, g),
+                s = session.new(game.level), step = 0,
+            }
+        end
+    end
+end
+
+-- The ghost advances with the player's own step count, never with wall-clock
+-- time: pausing must not let it drive off.
+local function advance_ghost()
+    if not game.ghost then return end
+    while game.ghost.step < game.steps do
+        local f = game.ghost.run.frames[game.ghost.step + 1]
+        if not f or game.ghost.s.parked then break end
+        game.ghost.step = game.ghost.step + 1
+        session.update(game.ghost.s, f, DT)
+    end
 end
 
 -- The model is rebuilt on entry so the marks are what the store says now: a park
@@ -81,6 +116,25 @@ end
 -- `love . --audit N` / `--audit all`: is the level parkable at all? A level no
 -- line parks is a shipped bug, and this is the only cheap evidence for it.
 -- Exit 0 when every level asked about has a line.
+-- A real ghost for the smoke frame: level 1 driven to a park, recorded, encoded
+-- and decoded, exactly as a stored ghost arrives.
+local function smoke_ghost(lvl)
+    local s, r = session.new(lvl), run.new(lvl)
+    local stop_x = lvl.bay.x - (rig.CARAVAN.coupling - rig.CARAVAN.length / 2)
+    local t = 0
+    while t < 60 and not s.parked do
+        local inp = (s.rig.x > stop_x)
+            and { steer = 0, throttle = 0, brake = 1, handbrake = false }
+            or { steer = 0, throttle = 0, brake = 0, handbrake = true }
+        run.record(r, inp)
+        session.update(s, inp, DT)
+        t = t + DT
+    end
+    run.finish(r, s)
+    local g = run.decode(run.encode(r, game.codec), game.codec)
+    return { run = g, trail = run.trace(lvl, g), s = session.new(lvl), step = 0 }
+end
+
 local function run_audit(arg, quick)
     local targets = {}
     if arg == nil or arg == "all" then
@@ -137,6 +191,7 @@ function love.load(args)
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
     input.init(game.input)
+    game.codec = codec.love_data()
     game.progress = smoke.enabled and smoke_progress() or progress.open(disk)
     load_level(game.index)
     -- the smoke harness drives play frames itself; a normal launch starts on the
@@ -176,9 +231,11 @@ local function update_play(dt)
     while game.acc >= DT and steps < MAX_STEPS and not game.s.parked do
         run.record(game.run, game.input)
         session.update(game.s, game.input, DT)
+        game.steps = game.steps + 1
         game.acc = game.acc - DT
         steps = steps + 1
     end
+    advance_ghost()
     if steps >= MAX_STEPS then game.acc = 0 end
 
     -- The park is the event that writes progress. record() gets the session the
@@ -186,8 +243,14 @@ local function update_play(dt)
     -- once, on the transition, not every frame the card is on screen.
     if not parked_before and game.s.parked then
         run.finish(game.run, game.s)
+        local before = progress.mark(game.progress, game.level).best
         local _, improved = progress.record(game.progress, game.level, game.s)
-        game.new_best = improved
+        game.new_best = improved and true or false
+        game.gain = (before and game.s.final.time) and (before - game.s.final.time) or nil
+        if game.gain and game.gain <= 0 then game.gain = nil end
+        -- the ghost is the BEST run, so a slower park must not overwrite it
+        local text = improved and run.encode(game.run, game.codec) or nil
+        if text then progress.put_ghost(game.progress, game.level, text) end
         progress.save(game.progress)
     end
 
@@ -208,6 +271,9 @@ local function draw_play()
     love.graphics.translate(game.ox, game.oy)
     love.graphics.scale(game.scale, -game.scale)
     draw.scene(game.level, game.s, { guide = game.guide, input = game.input })
+    if game.ghost and game.ghost_mode ~= "off" then
+        draw.ghost(game.ghost, game.ghost_mode)
+    end
     love.graphics.pop()
 
     draw.hud(game.s, game)
@@ -269,7 +335,18 @@ local function smoke_step()
         open_menu()
     elseif smoke.frames == 12 then
         love.graphics.captureScreenshot("smoke-menu.png")
-    elseif smoke.frames >= 13 then
+    elseif smoke.frames == 13 then
+        -- the ghost: built from a real drive here, not drawn from a picture of
+        -- one, and advanced to a mid-run step so the trail has something to show
+        game.mode = MODE.play
+        load_level(1)
+        game.ghost = smoke_ghost(game.level)
+        game.steps = 480
+        advance_ghost()
+        smoke.frozen = true
+    elseif smoke.frames == 14 then
+        love.graphics.captureScreenshot("smoke-ghost.png")
+    elseif smoke.frames >= 15 then
         print("SMOKE OK")
         love.event.quit(0)
     end
@@ -296,6 +373,9 @@ local function play_keypressed(key)
         game.guide = not game.guide
     elseif key == "p" then
         game.paused = not game.paused
+    elseif key == "h" then
+        game.ghost_mode = (game.ghost_mode == "off" and "trail")
+            or (game.ghost_mode == "trail" and "rig") or "off"
     elseif key == "f1" then
         game.debug = not game.debug
     elseif key == "f5" then

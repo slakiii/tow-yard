@@ -19,6 +19,7 @@ local M = { order = {
     "a_park_is_remembered",
     "best_time_only_improves",
     "edited_level_keeps_completion_loses_time",
+    "a_ghost_is_stored_and_expires_with_the_geometry",
 } }
 
 -- A parked session at a chosen clock reading; the fixture builds it through the
@@ -110,6 +111,25 @@ function M.edited_level_keeps_completion_loses_time()
     H.expect(entry.best == 40, "the new time belongs to the new geometry")
     H.expect(entry.stars == 2, "40 s is outside par")
     H.expect(progress.mark(p, lvl).stale == true, "and the old content's number is gone")
+end
+
+function M.a_ghost_is_stored_and_expires_with_the_geometry()
+    local lvl = levels.get(1)
+    local disk = fixtures.fake_disk()
+    local p = progress.open(disk)
+    progress.record(p, lvl, parked(lvl, 20))
+
+    H.expect(progress.ghost_text(p, lvl) == nil, "no ghost until one is stored")
+    H.expect(progress.put_ghost(p, lvl, "TOWYARD RUN 1\nfake\n"), "storing must succeed")
+
+    local name = progress.GHOST_DIR .. levelfmt.content_hash(lvl) .. ".tyrun"
+    H.expect(disk.files[name] ~= nil, "the blob is named by the content hash: " .. name)
+    H.expect(progress.ghost_text(p, lvl) ~= nil, "and reads back")
+
+    local edited = fixtures.deep_copy(lvl)
+    edited.walls[1].h = edited.walls[1].h + 0.01
+    H.expect(progress.ghost_text(p, edited) == nil,
+             "a ghost recorded on other geometry must not be offered")
 end
 
 return M

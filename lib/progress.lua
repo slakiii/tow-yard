@@ -137,6 +137,31 @@ function M.mark(self, level)
     return { completed = true, stars = entry.stars, best = entry.best, ghost = entry.ghost }
 end
 
+-- Ghosts live beside the index, named by content hash: one corrupt blob cannot
+-- take the progress file with it, and an edited level simply never looks its old
+-- ghost up again.
+M.GHOST_DIR = "ghosts/"
+
+local function ghost_name(level)
+    return M.GHOST_DIR .. levelfmt.content_hash(level) .. ".tyrun"
+end
+
+function M.put_ghost(self, level, text)
+    if not (self.disk and text) then return false end
+    if self.disk.mkdir then self.disk.mkdir(M.GHOST_DIR) end
+    self.disk.write(ghost_name(level), text)
+    return true
+end
+
+-- nil when the level changed under the stored ghost: a run from other geometry
+-- is not a ghost, it is a different level's run.
+function M.ghost_text(self, level)
+    if not self.disk then return nil end
+    local entry = type(level.id) == "string" and self.entries[level.id]
+    if not entry or entry.content ~= content_of(self, level) then return nil end
+    return self.disk.read(ghost_name(level))
+end
+
 function M.save(self)
     if not self.disk or not self.dirty then return false end
     self.disk.write(M.FILE, serialise(self))

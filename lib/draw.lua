@@ -665,6 +665,45 @@ function D.menu(model, game)
     love.graphics.print(hint, x, H - 30)
 end
 
+-- The ghost. Two modes, because one is honest and one is comfortable: the trail
+-- shows where the caravan's tail has been (legible in a 6.8 m alley, where a
+-- 35% alpha caravan sits exactly on top of yours), and `rig` shows the shape
+-- itself when there is room to see it.
+-- Violet, not the guide's blue: the reversing assist is the player's own line
+-- and the ghost is somebody else's, and two blue lines on one yard read as one
+-- system until you have watched them both move.
+D.GHOST = { 0.74, 0.46, 0.88 }
+
+function D.ghost(ghost, mode)
+    if mode == "rig" then
+        local rigged = ghost.s.rig
+        set(D.GHOST, 0.20)
+        love.graphics.polygon("fill", flat(rig.caravan_poly(rigged)))
+        love.graphics.polygon("fill", flat(rig.car_poly(rigged)))
+        set(D.GHOST, 0.55)
+        love.graphics.polygon("line", flat(rig.caravan_poly(rigged)))
+        return
+    end
+
+    local pts = ghost.trail or {}
+    local upto = math.min(#pts, math.ceil((ghost.step or 0) / 6))
+    if upto >= 2 then
+        local line = {}
+        for i = 1, upto do
+            line[#line + 1] = pts[i][1]
+            line[#line + 1] = pts[i][2]
+        end
+        set(D.GHOST, 0.55)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(line)
+        love.graphics.setLineWidth(1)
+    end
+    if pts[upto] then
+        set(D.GHOST, 0.85)
+        love.graphics.circle("fill", pts[upto][1], pts[upto][2], 0.30)
+    end
+end
+
 function D.overlay(s, game)
     local W = love.graphics.getWidth()
     local w, h = 360, 196
@@ -678,6 +717,16 @@ function D.overlay(s, game)
     love.graphics.setFont(fonts.big)
     set(D.C.good)
     love.graphics.print("PARKED", x + 22, y + 14)
+
+    if game and game.new_best then
+        love.graphics.setFont(fonts.small)
+        set(D.C.cone)
+        local text = "NEW BEST"
+        if game.gain and game.gain > 0.005 then
+            text = text .. string.format("   -%.2f s", game.gain)
+        end
+        love.graphics.print(text, x + 22, y + 46)
+    end
 
     love.graphics.setFont(fonts.mid)
     set(D.C.text)
