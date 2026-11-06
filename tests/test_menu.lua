@@ -18,6 +18,7 @@ local M = { order = {
     "an_empty_catalogue_has_no_cursor",
     "tabs_keep_their_own_cursor",
     "an_empty_tab_has_no_cursor",
+    "rebuilding_after_a_delete_keeps_the_cursor_sane",
 } }
 
 local function ids_of(m)
@@ -122,6 +123,23 @@ function M.an_empty_tab_has_no_cursor()
     H.expect(menu.cycle_tab(m, 1) == true, "cycling wraps")
     H.expect(menu.current_tab(m) == "campaign", "from the custom tab back to the campaign")
     H.expect(menu.current(m) ~= nil, "where there is something to open")
+end
+
+function M.rebuilding_after_a_delete_keeps_the_cursor_sane()
+    local a = a_custom_level("a", "A")
+    local b = a_custom_level("b", "B")
+    local m = menu.new(levels.ALL, { a, b }, nil)
+    menu.switch_tab(m, "custom")
+    menu.move(m, 1)
+    H.expect(menu.current(m).id == "b", "fixture: the cursor is on the second row")
+
+    menu.rebuild(m, levels.ALL, { a })
+    H.expect(menu.current_tab(m) == "custom", "deleting must not throw you back to the campaign")
+    H.expect(menu.current(m).id == "a", "and the cursor falls back to a row that exists")
+
+    menu.rebuild(m, levels.ALL, {})
+    H.expect(menu.current(m) == nil, "deleting the last level leaves nothing to open")
+    H.expect(menu.count(m) == 0, "and an empty tab")
 end
 
 return M
