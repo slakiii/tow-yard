@@ -7,9 +7,18 @@ local levels = require("lib.levels")
 local input = require("lib.input")
 local draw = require("lib.draw")
 local audit = require("lib.audit")
+local progress = require("lib.progress")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
+
+-- The progress store takes a disk rather than love.filesystem, so its rules stay
+-- testable; this table is the only place the two meet.
+local disk = {
+    read = function(name) return love.filesystem.read(name) end,
+    write = function(name, data) return love.filesystem.write(name, data) end,
+    remove = function(name) return love.filesystem.remove(name) end,
+}
 
 local smoke = { enabled = false, frames = 0, frozen = false }
 
@@ -44,6 +53,7 @@ local function load_level(n)
     game.level = levels.get(n)
     game.s = session.new(game.level)
     game.acc = 0
+    game.new_best = false
     game.input.steer, game.input.throttle, game.input.brake, game.input.handbrake = 0, 0, 0, false
     game.scale, game.ox, game.oy = camera(game.level)
 end
@@ -84,6 +94,7 @@ function love.load(args)
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
     input.init(game.input)
+    game.progress = progress.open(disk)
     load_level(game.index)
 end
 
@@ -111,12 +122,22 @@ local function update_play(dt)
 
     game.acc = game.acc + math.min(dt, 0.1)
     local steps = 0
+    local parked_before = game.s.parked
     while game.acc >= DT and steps < MAX_STEPS do
         session.update(game.s, game.input, DT)
         game.acc = game.acc - DT
         steps = steps + 1
     end
     if steps >= MAX_STEPS then game.acc = 0 end
+
+    -- The park is the event that writes progress. record() gets the session the
+    -- game produced (all of its numbers are the sim's own), and the store writes
+    -- once, on the transition, not every frame the card is on screen.
+    if not parked_before and game.s.parked then
+        local _, improved = progress.record(game.progress, game.level, game.s)
+        game.new_best = improved
+        progress.save(game.progress)
+    end
 
     local impact = game.s.bump_flash > 0.30 and 1 or nil
     input.rumble(game.input, rig.art(game.s.rig), impact)
@@ -202,6 +223,14 @@ local function play_keypressed(key)
         game.paused = not game.paused
     elseif key == "f1" then
         game.debug = not game.debug
+    elseif key == "f5" then
+        -- re-read the store: "what did the last park actually write?"
+        game.progress = progress.open(disk)
+        local n = 0
+        for _ in pairs(game.progress.entries) do n = n + 1 end
+        local msg = string.format("progress: %d level(s) on disk", n)
+        if #game.progress.warnings > 0 then msg = msg .. "  (" .. game.progress.warnings[1] .. ")" end
+        print(msg)
     elseif key == "n" and game.s.parked then
         load_level(game.index % #levels.ALL + 1)
     elseif key == "tab" then
