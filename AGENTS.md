@@ -17,6 +17,7 @@ love . --smoke                           # render every screen once, print SMOKE
 xvfb-run -a -s "-screen 0 1280x720x24" timeout 30 love . --smoke   # same, headless box
 love . --audit 4                         # can level 4 be parked? exit 0 = a line exists
 love . --audit all                       # every level (~25 s each, full grid only)
+love . --edit                            # the level editor (dev tool, see README)
 timeout 4 love .                         # legacy boot smoke (exit 124 = survived)
 ```
 
@@ -72,7 +73,10 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   `id`/`series`/`order`), `lib/levelcheck.lua` says whether a level is
   legitimate (used by the suite and, later, the importer and editor),
   `lib/progress.lua` stores best time/stars/ghost over an injected disk, and
-  `lib/menu.lua` is the level select's model.
+  `lib/menu.lua` is the level select's model, and `lib/edit/doc.lua` +
+  `lib/edit/undo.lua` are the editor's document and its snapshot stack. The
+  editor's view draws AUTHORED data, not the resolved level: the file is what
+  you are editing, so what it says is what you should see.
 
 ## Code Style
 

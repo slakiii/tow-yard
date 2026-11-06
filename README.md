@@ -17,6 +17,27 @@ Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
 `I` import the clipboard, `F1` debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 
+Editor (dev tool for now): `love . --edit`.
+
+| Mouse | |
+|---|---|
+| wheel | zoom (6-40 px/m, around the cursor) |
+| right / middle drag | pan |
+| click | place the active prop (0.5 m snap), or select with `select` |
+| drag | move the selection |
+
+| Key | |
+|---|---|
+| `[` `]` | cycle the tool palette |
+| `Q` `E` | rotate the selection 15 deg |
+| `+` `-` | resize |
+| `Del` | remove |
+| `Ctrl+Z` | undo (32 deep) |
+| `V` | verify with the winnability audit (~2 s, blocking) |
+| `P` | play the level in place, `Esc` back to the editor |
+| `S` | save to `custom/`, `O` copy the level as a share code |
+| `Esc` | back to the level select |
+
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 `D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,
 `Y` guide arc, `B` reset, `Start` pause. Rumble warns you as the articulation
@@ -54,6 +75,8 @@ Plans live in `.hermes/plans/`:
 | `lib/menu.lua` | level select model: rows, cursor, marks (pure) |
 | `lib/run.lua` | record / serialise / replay / verify a run (pure) |
 | `lib/share.lua` | share bundles and `TY1:` codes (pure) |
+| `lib/edit/doc.lua` | the editor's document and its edits (pure) |
+| `lib/edit/undo.lua` | snapshot undo (pure) |
 | `lib/codec.lua` | zlib + base64 over love.data, passed into the format |
 | `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |
 | `lib/draw.lua` | flat-colour renderer, HUD, result card, level select |

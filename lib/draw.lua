@@ -716,6 +716,166 @@ function D.ghost(ghost, mode)
     end
 end
 
+-- ---------------------------------------------------------------- editor
+--
+-- The editor's world view. It draws AUTHORED data (what the file says), not the
+-- resolved level, because the point of the screen is to show what you are
+-- about to write: a hedge with no numbers is still a hedge of its default size,
+-- but the moment you resize it the numbers appear in the file.
+
+function D.editor_world(doc, state)
+    local lvl = doc.level
+    local b = lvl.bounds
+
+    set(D.C.ground)
+    love.graphics.rectangle("fill", b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+
+    D.surfaces(lvl)
+
+    -- The grid goes OVER the paint: a dressed level covers its whole yard with
+    -- surfaces, so a grid drawn first is a grid nobody ever sees (it was, on the
+    -- first frame of this screen). 1 m thin, 5 m brighter, because a level is
+    -- authored in metres and nothing else.
+    for x = math.ceil(b.x0), math.floor(b.x1) do
+        local major = (math.floor(x + 0.5) % 5 == 0)
+        set(D.C.text, major and 0.26 or 0.11)
+        love.graphics.line(x, b.y0, x, b.y1)
+    end
+    for y = math.ceil(b.y0), math.floor(b.y1) do
+        local major = (math.floor(y + 0.5) % 5 == 0)
+        set(D.C.text, major and 0.26 or 0.11)
+        love.graphics.line(b.x0, y, b.x1, y)
+    end
+
+    for _, w in ipairs(lvl.walls or {}) do
+        local fp = props.footprint(w)
+        if fp then D.prop(w.x, w.y, w.angle or 0, fp) end
+    end
+    for _, c in ipairs(lvl.cones or {}) do
+        local fp = props.footprint(c)
+        if fp then D.prop(c.x, c.y, c.angle or 0, fp) end
+    end
+
+    -- the goal
+    local bay = lvl.bay
+    set(D.C.bay, 0.45)
+    love.graphics.polygon("fill", flat(geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)))
+    set(D.C.bay_line)
+    love.graphics.setLineWidth(2)
+    love.graphics.polygon("line", flat(geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)))
+    love.graphics.setLineWidth(1)
+
+    -- where the rig starts, and which way it points
+    local rigged = rig.new(lvl.spawn.x, lvl.spawn.y, lvl.spawn.th)
+    set(D.C.car, 0.75)
+    love.graphics.polygon("fill", flat(rig.car_poly(rigged)))
+    set(D.C.text, 0.9)
+    local ax = lvl.spawn.x + 2.2 * math.cos(lvl.spawn.th)
+    local ay = lvl.spawn.y + 2.2 * math.sin(lvl.spawn.th)
+    love.graphics.line(lvl.spawn.x, lvl.spawn.y, ax, ay)
+    love.graphics.circle("fill", ax, ay, 0.25)
+
+    -- the selection, drawn last so nothing sits on top of it
+    local sel = doc.selection
+    if sel then
+        local entry = (lvl[sel.list] or {})[sel.index]
+        local fp = entry and props.footprint(entry)
+        if fp then
+            set(D.C.cone)
+            love.graphics.setLineWidth(3)
+            if fp.shape == "circle" then
+                love.graphics.circle("line", entry.x, entry.y, fp.r + 0.25)
+            else
+                love.graphics.polygon("line",
+                    flat(geom.rect_poly(entry.x, entry.y, fp.w + 0.5, fp.h + 0.5, entry.angle or 0)))
+            end
+            love.graphics.setLineWidth(1)
+        elseif sel.list == "bay" then
+            set(D.C.cone)
+            love.graphics.setLineWidth(3)
+            love.graphics.polygon("line", flat(geom.rect_poly(bay.x, bay.y, bay.w + 0.6, bay.h + 0.6, bay.angle)))
+            love.graphics.setLineWidth(1)
+        end
+    end
+end
+
+-- The rails: what is selected, what is wrong, and every key that does something.
+-- Text rather than icons, because the editor is a dev tool first and an icon
+-- toolkit is a week of work for a screen four people will use.
+function D.editor_ui(doc, state, game)
+    local W, H = love.graphics.getDimensions()
+    local a = (state and state.alpha) or 0.92
+
+    love.graphics.setColor(0.04, 0.04, 0.05, 0.86)
+    love.graphics.rectangle("fill", 0, 0, 232, H)
+    love.graphics.rectangle("fill", 0, H - 92, W, 92)
+
+    love.graphics.setFont(fonts.small)
+    set(D.C.text)
+    love.graphics.print("TOOLS", 16, 14)
+
+    local y = 38
+    for _, name in ipairs(state.palette or {}) do
+        local active = (name == state.tool)
+        if active then
+            set(D.C.bay_line, 0.22)
+            love.graphics.rectangle("fill", 10, y - 3, 212, 22, 4)
+        end
+        set(active and D.C.bay_line or D.C.dim, active and 1 or 0.85)
+        love.graphics.print(name, 18, y)
+        y = y + 22
+    end
+
+    y = y + 12
+    set(D.C.text, 0.9)
+    love.graphics.print("SELECTION", 16, y)
+    y = y + 22
+    set(D.C.dim)
+    local sel = doc.selection
+    if sel then
+        local entry = (doc.level[sel.list] or {})[sel.index]
+        if entry then
+            love.graphics.print(string.format("%s %d  %.1f, %.1f",
+                sel.list, sel.index, entry.x, entry.y), 18, y)
+        else
+            love.graphics.print(tostring(sel.list), 18, y)
+        end
+    else
+        love.graphics.print("nothing", 18, y)
+    end
+
+    y = y + 26
+    set(D.C.text, 0.9)
+    love.graphics.print("ERRORS", 16, y)
+    y = y + 22
+    local errors = (state and state.errors) or {}
+    if #errors == 0 then
+        set(D.C.good, 0.9)
+        love.graphics.print("none  -  savable", 18, y)
+    else
+        set(D.C.warn, 0.95)
+        for i = 1, math.min(4, #errors) do
+            love.graphics.print(errors[i], 18, y)
+            y = y + 18
+        end
+        if #errors > 4 then love.graphics.print("+" .. (#errors - 4) .. " more", 18, y) end
+    end
+
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim, a)
+    local hint = "[ ] tool   click add   click select   drag move   Q/E rotate   +/- size   "
+        .. "Del remove   ctrl+Z undo   wx zoom"
+    love.graphics.print(hint, 16, H - 52)
+    set(D.C.text, 0.85)
+    local keys = "V verify   P play   S save   O export to clipboard   Esc level select"
+    love.graphics.print(keys, 16, H - 28)
+
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim, 0.9)
+    love.graphics.print(string.format("%s  %.0f px/m", tostring(doc.level.id),
+        (state and state.cam and state.cam.scale) or 0), W - 220, 14)
+end
+
 function D.overlay(s, game)
     local W = love.graphics.getWidth()
     local w, h = 360, 196

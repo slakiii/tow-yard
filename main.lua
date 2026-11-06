@@ -13,6 +13,9 @@ local menu = require("lib.menu")
 local levelfmt = require("lib.levelfmt")
 local codec = require("lib.codec")
 local share = require("lib.share")
+local doc = require("lib.edit.doc")
+local undo = require("lib.edit.undo")
+local levelcheck = require("lib.levelcheck")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
@@ -31,7 +34,13 @@ local smoke = { enabled = false, frames = 0, frozen = false }
 -- A mode is a screen with its own update/draw/keys. The game began as a single
 -- implicit state; the level select and the editor make the switch explicit, so a
 -- key press cannot leak into the screen that is not showing.
-local MODE = { play = "play", menu = "menu" }
+local MODE = { play = "play", menu = "menu", editor = "editor" }
+
+-- Everything the editor can place. "select" is a tool, not a kind: the palette
+-- is one list so the player's eye does not have to sort it into two.
+local PALETTE = { "select", "hedge", "building", "tent", "rv", "car", "pool",
+                  "cone", "firepit", "chair", "gravel", "grass", "deck" }
+local SNAP = 0.5
 
 local game = {
     mode = MODE.menu,
@@ -47,6 +56,8 @@ local game = {
     ghost_mode = "trail",     -- off | trail | rig
     custom = {},              -- imported levels, beside the campaign
     toast = nil,
+    editor = nil,
+    playtest = false,         -- play came from the editor: Esc goes back there
     input = input.new_state(),
 }
 
@@ -173,6 +184,225 @@ local function open_selected()
     game.mode = MODE.play
 end
 
+-- ------------------------------------------------------------------ editor
+
+local function editor_to_world(mx, my)
+    local W, H = love.graphics.getDimensions()
+    local cam = game.editor.cam
+    return cam.x + (mx - W / 2) / cam.scale, cam.y - (my - H / 2) / cam.scale
+end
+
+local function snap(v)
+    return math.floor(v / SNAP + 0.5) * SNAP
+end
+
+local function editor_errors()
+    local e = game.editor
+    e.errors = levelcheck.errors(doc.level(e.doc))
+end
+
+-- Every mutation goes through here: snapshot first, then change, then re-check.
+-- One path means nothing can be edited without being undoable or unchecked.
+local function editor_edit(fn)
+    local e = game.editor
+    undo.push(e.undo, doc.snapshot(e.doc))
+    fn()
+    e.dirty = true
+    editor_errors()
+end
+
+local function open_editor(lvl)
+    local W, H = love.graphics.getDimensions()
+    local b = lvl.bounds
+    game.editor = {
+        doc = doc.new(lvl),
+        undo = undo.new(),
+        cam = {
+            x = (b.x0 + b.x1) / 2,
+            y = (b.y0 + b.y1) / 2,
+            scale = math.min((W - 300) / (b.x1 - b.x0), (H - 120) / (b.y1 - b.y0)),
+        },
+        tool = "select",
+        palette = PALETTE,
+        errors = {},
+        dirty = false,
+    }
+    editor_errors()
+    game.mode = MODE.editor
+end
+
+-- A custom level may not take a shipped level's id: progress, ghosts and the
+-- content hash are all keyed by it, and two levels answering to "straight-back"
+-- is a bug that surfaces as somebody else's best time.
+local function editor_save()
+    local e = game.editor
+    local lvl = doc.level(e.doc)
+    if levels.find(lvl.id) then
+        local base, n = lvl.id .. "-copy", 1
+        while levels.find(base) or (function()
+            for _, c in ipairs(game.custom) do if c.id == base then return true end end
+        end)() do
+            n = n + 1
+            base = lvl.id .. "-copy" .. n
+        end
+        e.doc.level.id = base
+        lvl = doc.level(e.doc)
+        say("renamed to " .. base .. " (that id belongs to a shipped level)", 6)
+    end
+
+    local name, err = levelfmt.save_custom(disk, lvl)
+    if not name then
+        say("could not save: " .. tostring(err), 6)
+        return
+    end
+    game.custom = levelfmt.scan_custom(disk)
+    e.dirty = false
+    say("saved " .. name)
+end
+
+local function editor_verify()
+    local e = game.editor
+    local lvl = doc.level(e.doc)
+
+    -- The audit blocks for ~2 s. Present the notice BEFORE calling it, or the
+    -- player stares at a frozen frame and thinks the editor died.
+    love.graphics.setFont(love.graphics.newFont(19))
+    love.graphics.setColor(0.9, 0.92, 0.95)
+    love.graphics.print("verifying - the audit tries every staging pose...", 260, 18)
+    love.graphics.present()
+
+    local res = audit.solve(lvl, { grid = audit.QUICK_GRID })
+    if res.solved then
+        say(string.format("a line exists: %.1f s by machine (a floor, not a par)", res.best.time), 8)
+    else
+        say("no line found - this level may still be playable, but it needs a playtest", 8)
+    end
+end
+
+local function editor_keypressed(key)
+    local e = game.editor
+    local ctrl = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
+
+    if key == "escape" then
+        open_menu()
+    elseif key == "leftbracket" or key == "rightbracket" then
+        local n = #e.palette
+        local i = 1
+        for j, name in ipairs(e.palette) do if name == e.tool then i = j end end
+        i = ((i - 1 + (key == "rightbracket" and 1 or -1)) % n) + 1
+        e.tool = e.palette[i]
+    elseif ctrl and key == "z" then
+        local text = undo.back(e.undo)
+        if text then
+            doc.restore(e.doc, text)
+            editor_errors()
+            e.dirty = true
+            say("undo")
+        else
+            say("nothing to undo")
+        end
+    elseif key == "q" or key == "e" then
+        editor_edit(function() doc.rotate(e.doc, key == "q" and -15 or 15) end)
+    elseif key == "=" or key == "kp+" then
+        editor_edit(function() doc.resize(e.doc, 0.5, 0.5) end)
+    elseif key == "minus" or key == "kp-" then
+        editor_edit(function() doc.resize(e.doc, -0.5, -0.5) end)
+    elseif key == "delete" or key == "backspace" then
+        editor_edit(function() doc.remove(e.doc) end)
+    elseif key == "v" then
+        editor_verify()
+    elseif key == "p" then
+        game.playtest = true
+        load_level_object(doc.level(e.doc))
+        game.mode = MODE.play
+    elseif key == "s" then
+        editor_save()
+    elseif key == "o" then
+        local text = share.bundle(doc.level(e.doc), nil, game.codec, "user")
+        if text then
+            love.system.setClipboardText(share.code(text, game.codec))
+            say("level code copied")
+        end
+    end
+end
+
+local function editor_mousepressed(x, y, button)
+    local e = game.editor
+    local wx, wy = editor_to_world(x, y)
+
+    if button == 2 or button == 3 then
+        e.pan = { x = x, y = y, cx = e.cam.x, cy = e.cam.y }
+        return
+    end
+    if button ~= 1 then return end
+
+    if e.tool == "select" then
+        local sel = doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
+        if sel then
+            local entry = (e.doc.level[sel.list] or {})[sel.index]
+            if entry and sel.list ~= "surfaces" or (entry and sel.list == "surfaces") then
+                e.drag = { wx = wx, wy = wy, ox = entry.x, oy = entry.y }
+            end
+        end
+    else
+        editor_edit(function() doc.add(e.doc, e.tool, snap(wx), snap(wy)) end)
+    end
+end
+
+local function editor_mousemoved(x, y, dx, dy)
+    local e = game.editor
+    if e.pan then
+        e.cam.x = e.pan.cx - (x - e.pan.x) / e.cam.scale
+        e.cam.y = e.pan.cy + (y - e.pan.y) / e.cam.scale
+        return
+    end
+    if e.drag then
+        local wx, wy = editor_to_world(x, y)
+        local sel = e.doc.selection
+        local entry = sel and (e.doc.level[sel.list] or {})[sel.index]
+        if not entry then return end
+        local nx = snap(e.drag.ox + (wx - e.drag.wx))
+        local ny = snap(e.drag.oy + (wy - e.drag.wy))
+        if nx ~= entry.x or ny ~= entry.y then
+            if not e.drag.pushed then
+                undo.push(e.undo, doc.snapshot(e.doc))
+                e.drag.pushed = true
+            end
+            entry.x, entry.y = nx, ny
+            e.dirty = true
+            editor_errors()
+        end
+    end
+end
+
+local function editor_mousereleased(x, y, button)
+    local e = game.editor
+    e.pan = nil
+    e.drag = nil
+end
+
+local function editor_wheelmoved(dx, dy)
+    local e = game.editor
+    local mx, my = love.mouse.getPosition()
+    local wx, wy = editor_to_world(mx, my)
+    local W, H = love.graphics.getDimensions()
+    local s = math.max(6, math.min(40, e.cam.scale * (1 + dy * 0.12)))
+    e.cam.scale = s
+    e.cam.x = wx - (mx - W / 2) / s
+    e.cam.y = wy + (my - H / 2) / s
+end
+
+local function draw_editor()
+    local W, H = love.graphics.getDimensions()
+    local e = game.editor
+    love.graphics.push()
+    love.graphics.translate(W / 2 - e.cam.x * e.cam.scale, H / 2 + e.cam.y * e.cam.scale)
+    love.graphics.scale(e.cam.scale, -e.cam.scale)
+    draw.editor_world(e.doc, e)
+    love.graphics.pop()
+    draw.editor_ui(e.doc, e, game)
+end
+
 -- `love . --audit N` / `--audit all`: is the level parkable at all? A level no
 -- line parks is a shipped bug, and this is the only cheap evidence for it.
 -- Exit 0 when every level asked about has a line.
@@ -247,6 +477,10 @@ function love.load(args)
         end
     end
     if want_audit then return run_audit(audit_arg, quick) end
+    local want_edit = false
+    for _, a in ipairs(args or {}) do
+        if a == "--edit" then want_edit = true end
+    end
 
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
@@ -263,6 +497,7 @@ function love.load(args)
     -- title screen
     game.mode = smoke.enabled and MODE.play or MODE.menu
     if game.mode == MODE.menu then open_menu() end
+    if want_edit and not smoke.enabled then open_editor(levels.get(1)) end
 end
 
 local function update_play(dt)
@@ -411,7 +646,18 @@ local function smoke_step()
         smoke.frozen = true
     elseif smoke.frames == 14 then
         love.graphics.captureScreenshot("smoke-ghost.png")
-    elseif smoke.frames >= 15 then
+    elseif smoke.frames == 15 then
+        -- the editor on a shipped level, with a prop selected and an error
+        -- showing: the frame that has to prove the rails are readable
+        open_editor(levels.get(1))
+        game.editor.tool = "hedge"
+        local w = game.editor.doc.level.walls[1]
+        doc.pick(game.editor.doc, w.x, w.y, 0.4)
+        doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
+        editor_errors()
+    elseif smoke.frames == 16 then
+        love.graphics.captureScreenshot("smoke-editor.png")
+    elseif smoke.frames >= 17 then
         print("SMOKE OK")
         love.event.quit(0)
     end
@@ -433,7 +679,12 @@ end
 
 local function play_keypressed(key)
     if key == "escape" then
-        open_menu()
+        if game.playtest then
+            game.playtest = false
+            game.mode = MODE.editor
+        else
+            open_menu()
+        end
     elseif key == "r" then
         load_level(game.index)
     elseif key == "g" then
@@ -489,6 +740,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function love.update(dt)
+    if game.mode == MODE.editor then return end
     if game.mode == MODE.play then
         update_play(dt)
     elseif game.mode == MODE.menu then
@@ -501,6 +753,8 @@ function love.draw()
         draw_play()
     elseif game.mode == MODE.menu then
         draw.menu(game.menu, game)
+    elseif game.mode == MODE.editor then
+        draw_editor()
     end
     if smoke.enabled then smoke_step() end
 end
@@ -510,5 +764,23 @@ function love.keypressed(key)
         play_keypressed(key)
     elseif game.mode == MODE.menu then
         menu_keypressed(key)
+    elseif game.mode == MODE.editor then
+        editor_keypressed(key)
     end
+end
+
+function love.mousepressed(x, y, button)
+    if game.mode == MODE.editor then editor_mousepressed(x, y, button) end
+end
+
+function love.mousemoved(x, y, dx, dy)
+    if game.mode == MODE.editor then editor_mousemoved(x, y, dx, dy) end
+end
+
+function love.mousereleased(x, y, button)
+    if game.mode == MODE.editor then editor_mousereleased(x, y, button) end
+end
+
+function love.wheelmoved(dx, dy)
+    if game.mode == MODE.editor then editor_wheelmoved(dx, dy) end
 end
