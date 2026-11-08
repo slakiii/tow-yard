@@ -35,9 +35,11 @@ with the same `id`, then `love tests` and `love . --audit N` before committing.
 
 | Mouse | |
 |---|---|
+| click the rail | pick a tool (the name in the rail is the level's; `F2` renames it) |
 | wheel | zoom (6-40 px/m, around the cursor) |
 | right / middle drag | pan |
 | click | place the active prop (0.5 m snap), or select with `select` |
+| — | with a tool picked, a faint preview follows the cursor; clicking puts it down |
 | drag | move the selection (props, the bay and the spawn alike) |
 
 | Key | |

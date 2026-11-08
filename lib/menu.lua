@@ -100,6 +100,24 @@ function M.move(self, d)
     return self
 end
 
+-- Put the cursor on a level by id, in whichever tab holds it -- the level you
+-- just played is the one you are most likely to want. Returns the tab it found,
+-- or nil when that level is not in the menu any more (deleted, or a custom level
+-- whose file is gone).
+function M.focus(self, id)
+    if not id then return nil end
+    for _, name in ipairs(M.TABS) do
+        for i, lvl in ipairs(self.lists[name] or {}) do
+            if lvl.id == id then
+                self.tab = name
+                self.index[name] = i
+                return name
+            end
+        end
+    end
+    return nil
+end
+
 function M.current(self)
     local i = self.index[self.tab]
     if not i then return nil end

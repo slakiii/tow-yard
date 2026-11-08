@@ -8,7 +8,8 @@ local H = require("tests.helper")
 local draw = require("lib.draw")
 
 local M = { order = { "hedge_bumps_fit_a_horizontal_hedge", "hedge_bumps_fit_a_vertical_hedge",
-                      "hedge_bumps_scale_with_the_short_side", "speed_reads_in_km_h" } }
+                      "hedge_bumps_scale_with_the_short_side", "speed_reads_in_km_h",
+                      "the_rail_maps_a_click_to_a_tool" } }
 
 local function check_inside(fp, label)
     local bumps = draw.hedge_bumps(fp)
@@ -51,6 +52,23 @@ function M.speed_reads_in_km_h()
     H.expect(draw.kmh(1.8) == "6 km/h", "the reverse cap is 6.5 km/h, shown as 6")
     H.expect(draw.kmh(-3.6) == "13 km/h", "speed is a magnitude: reversing reads positive")
     H.expect(draw.kmh(1.8, 1) == "6.5 km/h", "the debug overlay keeps a decimal")
+end
+
+function M.the_rail_maps_a_click_to_a_tool()
+    -- the rail is a list of rows, so a click is arithmetic. Getting this wrong
+    -- means a click on "cone" places a hedge, which reads as the editor ignoring
+    -- you -- and the whole point of making the rail clickable was that "[ and ]"
+    -- was not discoverable.
+    local palette = { "select", "bay", "spawn", "hedge", "cone" }
+
+    H.expect(draw.editor_tool_at(60, 156, palette) == "select", "the first row is the first tool")
+    H.expect(draw.editor_tool_at(60, 178, palette) == "bay", "one row down is the second")
+    H.expect(draw.editor_tool_at(60, 200, palette) == "spawn", "and so on")
+    H.expect(draw.editor_tool_at(10, 240, palette) == "hedge", "mid-row still hits its row")
+
+    H.expect(draw.editor_tool_at(60, 100, palette) == nil, "above the list is not a tool")
+    H.expect(draw.editor_tool_at(60, 900, palette) == nil, "below the list is not a tool")
+    H.expect(draw.editor_tool_at(400, 178, palette) == nil, "and the yard is not the rail")
 end
 
 return M

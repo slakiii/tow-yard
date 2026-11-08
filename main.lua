@@ -73,6 +73,7 @@ local function camera(lvl)
 end
 
 local function load_level_object(lvl)
+    game.last_played = lvl and lvl.id or game.last_played
     game.index = levels.find(lvl.id) or game.index
     game.level = lvl
     game.s = session.new(game.level)
@@ -176,6 +177,9 @@ end
 local function open_menu()
     game.custom = levelfmt.scan_custom(disk)
     game.menu = menu.new(levels.ALL, game.custom, game.progress)
+    -- come back to the level you just drove: it is the one you are most likely to
+    -- want, and hunting for it after every attempt is friction for nothing
+    if game.last_played then menu.focus(game.menu, game.last_played) end
     game.mode = MODE.menu
 end
 
@@ -382,6 +386,18 @@ end
 
 local function editor_mousepressed(x, y, button)
     local e = game.editor
+
+    -- the rail takes the click: picking a tool and then clicking the yard is how
+    -- every editor works, and it is the answer to "how do I add something"
+    if x <= draw.RAIL and button == 1 then
+        local tool = draw.editor_tool_at(x, y, e.palette)
+        if tool then
+            e.tool = tool
+            if tool ~= "select" then say(tool .. ": click the yard to place it", 3) end
+        end
+        return
+    end
+
     local wx, wy = editor_to_world(x, y)
 
     if button == 2 or button == 3 then
@@ -707,7 +723,10 @@ local function smoke_step()
         love.graphics.captureScreenshot("smoke-forward.png")
     elseif smoke.frames == 11 then
         -- the title screen, drawn from the scripted store above: three marks and
-        -- one "level changed" card, the same on every machine
+        -- one "level changed" card, the same on every machine. last_played is a
+        -- level that is NOT row one, so the frame proves the cursor came back to
+        -- the level that was played rather than to the default.
+        game.last_played = "fire-side"
         open_menu()
     elseif smoke.frames == 12 then
         love.graphics.captureScreenshot("smoke-menu.png")
@@ -731,6 +750,9 @@ local function smoke_step()
         doc.pick(game.editor.doc, w.x, w.y, 0.4)
         doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
         editor_errors()
+        -- put the pointer over the yard so the frame shows the placement preview
+        local W, H = love.graphics.getDimensions()
+        love.mouse.setPosition(math.floor(W * 0.62), math.floor(H * 0.52))
     elseif smoke.frames == 16 then
         love.graphics.captureScreenshot("smoke-editor.png")
     elseif smoke.frames == 17 then

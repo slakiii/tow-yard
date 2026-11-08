@@ -19,6 +19,7 @@ local M = { order = {
     "tabs_keep_their_own_cursor",
     "an_empty_tab_has_no_cursor",
     "rebuilding_after_a_delete_keeps_the_cursor_sane",
+    "the_menu_returns_to_the_level_you_played",
 } }
 
 local function ids_of(m)
@@ -140,6 +141,25 @@ function M.rebuilding_after_a_delete_keeps_the_cursor_sane()
     menu.rebuild(m, levels.ALL, {})
     H.expect(menu.current(m) == nil, "deleting the last level leaves nothing to open")
     H.expect(menu.count(m) == 0, "and an empty tab")
+end
+
+function M.the_menu_returns_to_the_level_you_played()
+    local mine = a_custom_level("my-level", "Mine")
+    local m = menu.new(levels.ALL, { mine }, nil)
+
+    H.expect(menu.focus(m, "fire-side") == "campaign", "a campaign level is found in the campaign")
+    H.expect(menu.current(m).id == "fire-side", "and the cursor is on it")
+    H.expect(m.tab == "campaign", "on the campaign tab")
+
+    H.expect(menu.focus(m, "my-level") == "custom", "a custom level switches the tab")
+    H.expect(menu.current(m).id == "my-level", "and lands on it")
+
+    -- a level that is gone (deleted custom level, renamed id) must not throw the
+    -- cursor somewhere else
+    menu.focus(m, "my-level")
+    H.expect(menu.focus(m, "deleted-level") == nil, "an unknown id is not found")
+    H.expect(menu.current(m).id == "my-level", "and the cursor does not move")
+    H.expect(menu.focus(m, nil) == nil, "no id at all is a no-op")
 end
 
 return M

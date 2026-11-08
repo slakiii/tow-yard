@@ -822,6 +822,14 @@ local function brackets(poly, arm, wide)
     love.graphics.setLineWidth(1)
 end
 
+-- Snapping is a placement rule, so it lives where the ghost preview needs it; the
+-- click in main.lua snaps the same way with the same step.
+local function snap_to(state, x, y)
+    local step = state and state.snap
+    if not step or step <= 0 then return x, y end
+    return math.floor(x / step + 0.5) * step, math.floor(y / step + 0.5) * step
+end
+
 function D.editor_world(doc, state)
     local lvl = doc.level
     local b = lvl.bounds
@@ -890,6 +898,26 @@ function D.editor_world(doc, state)
         hx - 0.7 * math.cos(lvl.spawn.th) - 0.35 * nx, hy - 0.7 * math.sin(lvl.spawn.th) - 0.35 * ny)
     love.graphics.setLineWidth(1)
 
+    -- what a click would put down, drawn faintly under the cursor: the cheapest
+    -- possible answer to "how do I add something"
+    if state and state.tool and state.tool ~= "select" then
+        local mx, my = love.mouse.getPosition()
+        if mx > D.RAIL then
+            local W, H = love.graphics.getDimensions()
+            local sx, sy = snap_to(state, state.cam.x + (mx - W / 2) / scale,
+                state.cam.y - (my - H / 2) / scale)
+            local def = props.get(state.tool)
+            if def then
+                local fp = props.footprint({ kind = state.tool, x = sx, y = sy })
+                if fp then D.prop(sx, sy, 0, fp, 0.34) end
+            elseif props.SURFACES[state.tool] then
+                local col = props.SURFACES[state.tool].colour
+                set({ col[1], col[2], col[3] }, 0.5)
+                love.graphics.rectangle("fill", sx - 3, sy - 2, 6, 4)
+            end
+        end
+    end
+
     -- the selection, drawn last so nothing sits on top of it
     local sel = doc.selection
     if sel then
@@ -922,24 +950,72 @@ end
 -- The rails: what is selected, what is wrong, and every key that does something.
 -- Text rather than icons, because the editor is a dev tool first and an icon
 -- toolkit is a week of work for a screen four people will use.
+D.RAIL = 232            -- width of the tool rail, in pixels
+local TOOL_Y, TOOL_ROW = 156, 22
+
+-- Which tool is under the cursor. The rail is clickable because telling somebody
+-- to cycle a palette with [ and ] is not telling them how to add a prop: the
+-- first thing three people asked was "how do I put something down".
+function D.editor_tool_at(x, y, palette)
+    if x > D.RAIL or y < TOOL_Y then return nil end
+    local i = math.floor((y - TOOL_Y) / TOOL_ROW) + 1
+    return (palette or {})[i]
+end
+
 function D.editor_ui(doc, state, game)
     local W, H = love.graphics.getDimensions()
     local a = (state and state.alpha) or 0.92
 
-    love.graphics.setColor(0.04, 0.04, 0.05, 0.86)
-    love.graphics.rectangle("fill", 0, 0, 232, H)
+    love.graphics.setColor(0.04, 0.04, 0.05, 0.88)
+    love.graphics.rectangle("fill", 0, 0, D.RAIL, H)
     love.graphics.rectangle("fill", 0, H - 92, W, 92)
 
+    -- the level's own name, big enough to read: it is what you are authoring
     love.graphics.setFont(fonts.small)
-    set(D.C.text)
-    love.graphics.print("TOOLS", 16, 14)
+    set(D.C.dim)
+    love.graphics.print("TOW YARD  editor", 16, 14)
+    love.graphics.setFont(fonts.mid)
+    if state and state.typing then
+        set(D.C.bay_line)
+        love.graphics.print(state.typing.buffer .. "|", 16, 44)
+        love.graphics.setFont(fonts.small)
+        set(D.C.dim, 0.8)
+        love.graphics.print("Enter keeps   Esc cancels", 16, 82)
+    else
+        set(D.C.text)
+        love.graphics.print(tostring(doc.level.name or "?"), 16, 44)
+        love.graphics.setFont(fonts.small)
+        set(D.C.dim, 0.8)
+        love.graphics.print("F2 rename    " .. tostring(doc.level.id), 16, 82)
+    end
 
-    local y = 38
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim, 0.9)
+    love.graphics.print("add: pick a tool, then click the yard", 16, 108)
+    set(D.C.text)
+    love.graphics.print("TOOLS", 16, 136)
+
+    -- the editor's own toasts: saved / renamed / copied. These were drawn only by
+    -- the play HUD, so every message the editor said went nowhere.
+    if game and game.toast and game.toast.expires and love.timer.getTime() < game.toast.expires then
+        love.graphics.setFont(fonts.small)
+        set(D.C.text, 0.92)
+        local t = game.toast.text
+        love.graphics.print(t, D.RAIL + (W - D.RAIL - fonts.small:getWidth(t)) / 2, 18)
+    end
+
+    local mx, my = love.mouse.getPosition()
+    local hovered = D.editor_tool_at(mx, my, state.palette)
+
+    local y = TOOL_Y
     for _, name in ipairs(state.palette or {}) do
         local active = (name == state.tool)
         if active then
             set(D.C.bay_line, 0.22)
-            love.graphics.rectangle("fill", 10, y - 3, 212, 22, 4)
+            love.graphics.rectangle("fill", 10, y - 3, D.RAIL - 20, TOOL_ROW, 4)
+        elseif name == hovered then
+            set(D.C.text, 0.07)
+            love.graphics.rectangle("fill", 10, y - 3, D.RAIL - 20, TOOL_ROW, 4)
         end
         set(active and D.C.bay_line or D.C.dim, active and 1 or 0.85)
         -- the kind is what the file says; the label is what the thing is. Show
@@ -948,7 +1024,7 @@ function D.editor_ui(doc, state, game)
         local text = name
         if def and def.label and def.label ~= name then text = name .. "  " .. def.label end
         love.graphics.print(text, 18, y)
-        y = y + 22
+        y = y + TOOL_ROW
     end
 
     y = y + 6
