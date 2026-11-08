@@ -51,8 +51,9 @@ there is one deliberate step between them:
    and puts the same text on the clipboard.
 5. `python3 tools/apply-level.py <id>` splices that draft into `lib/levels.lua`
    (brace-matched, id-checked) and runs `love tests`.
-6. `love . --audit <n>` on the full grid, then playtest it and set par from what
-   you actually drive.
+6. `love . --audit <n>` -- `n` is the level's row in the catalogue, or its id:
+   `--audit 3` and `--audit angled-bay` are the same level. Full grid, then
+   playtest it and set par from what you actually drive.
 7. Commit.
 
 **Read the diff before committing.** Applying a draft replaces the entry

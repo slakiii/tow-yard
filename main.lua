@@ -634,7 +634,32 @@ local function run_audit(arg, quick)
     if arg == nil or arg == "all" then
         for i = 1, #levels.ALL do targets[#targets + 1] = i end
     else
-        targets[1] = tonumber(arg) or 1
+        -- a position in the catalogue (the row you see in the level select) or an
+        -- id. Anything else is refused: `--audit angled-bay` used to fall back to
+        -- level 1 and audit the wrong level while saying it had audited one.
+        local n = tonumber(arg)
+        if n then
+            if n < 1 or n > #levels.ALL or n ~= math.floor(n) then
+                print(string.format("no level %s: the catalogue has 1..%d", arg, #levels.ALL))
+                love.event.quit(2)
+                return
+            end
+            targets[1] = n
+        else
+            local at
+            for i, l in ipairs(levels.ALL) do
+                if l.id == arg then at = i end
+            end
+            if not at then
+                local ids = {}
+                for _, l in ipairs(levels.ALL) do ids[#ids + 1] = l.id end
+                print("no level with id " .. tostring(arg))
+                print("known ids: " .. table.concat(ids, ", "))
+                love.event.quit(2)
+                return
+            end
+            targets[1] = at
+        end
     end
     local failed = 0
     for _, i in ipairs(targets) do
