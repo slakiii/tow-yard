@@ -8,6 +8,7 @@ local rig = require("lib.rig")
 local session = require("lib.session")
 local input = require("lib.input")
 local props = require("lib.props")
+local editdoc = require("lib.edit.doc")
 local menu = require("lib.menu")
 
 local D = {}
@@ -822,6 +823,11 @@ local function brackets(poly, arm, wide)
     love.graphics.setLineWidth(1)
 end
 
+local function safe_handles(doc)
+    local ok, handles = pcall(function() return editdoc.resize_handles(doc) end)
+    return ok and handles or {}
+end
+
 -- Snapping is a placement rule, so it lives where the ghost preview needs it; the
 -- click in main.lua snaps the same way with the same step.
 local function snap_to(state, x, y)
@@ -916,6 +922,13 @@ function D.editor_world(doc, state)
                 love.graphics.rectangle("fill", sx - 3, sy - 2, 6, 4)
             end
         end
+    end
+
+    -- resize handles, if this kind can be stretched at all: a small filled square
+    -- at each grab point, sized in screen pixels like everything else here
+    set(D.C.cone)
+    for _, h in ipairs(safe_handles(doc)) do
+        love.graphics.rectangle("fill", h.x - 4 * u, h.y - 4 * u, 8 * u, 8 * u)
     end
 
     -- the selection, drawn last so nothing sits on top of it
@@ -1030,6 +1043,18 @@ function D.editor_ui(doc, state, game)
     y = y + 6
     set(D.C.dim)
     love.graphics.print("snap " .. ((state.snap and state.snap > 0) and (state.snap .. " m") or "off"), 18, y)
+    if doc.selection then
+        local mode = editdoc.resize_mode(doc)
+        if mode == "none" then
+            y = y + 16
+            set(D.C.warn, 0.85)
+            love.graphics.print("this kind has one size", 18, y)
+        elseif mode == "length" then
+            y = y + 16
+            set(D.C.dim, 0.8)
+            love.graphics.print("stretches along its length only", 18, y)
+        end
+    end
 
     y = y + 12
     set(D.C.text, 0.9)
@@ -1068,7 +1093,7 @@ function D.editor_ui(doc, state, game)
 
     love.graphics.setFont(fonts.small)
     set(D.C.dim, a)
-    local hint = "[ ] tool   click add   click select   drag move   Q/E rotate   +/- size   "
+    local hint = "[ ] tool   click add   drag move   Q/E rotate   drag a handle to size   "
         .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
     love.graphics.print(hint, 16, H - 52)
     set(D.C.text, 0.85)
@@ -1087,6 +1112,31 @@ function D.editor_ui(doc, state, game)
         love.graphics.print(string.format("%s  %s  %.0f px/m", tostring(doc.level.name),
             tostring(doc.level.id), (state and state.cam and state.cam.scale) or 0), W - 420, 14)
     end
+end
+
+-- The question the editor has to ask before it lets go of your work. Drawn over
+-- the canvas but under the rails, so the level stays visible while you decide.
+function D.editor_prompt(state, game)
+    if not state or not state.prompt then return end
+    local W, H = love.graphics.getDimensions()
+    local box_w, box_h = 460, 116
+    local x, y = (W - box_w) / 2, (H - box_h) / 2
+
+    love.graphics.setColor(0.02, 0.02, 0.03, 0.72)
+    love.graphics.rectangle("fill", 0, 0, W, H)
+    love.graphics.setColor(0.07, 0.08, 0.09, 0.98)
+    love.graphics.rectangle("fill", x, y, box_w, box_h, 6)
+    set(D.C.text)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", x, y, box_w, box_h, 6)
+
+    love.graphics.setFont(fonts.mid)
+    love.graphics.print("Unsaved changes", x + 20, y + 16)
+    love.graphics.setFont(fonts.small)
+    set(D.C.dim)
+    love.graphics.print("S  save to custom levels", x + 20, y + 50)
+    love.graphics.print("Esc  leave without saving (a copy is kept in drafts/)", x + 20, y + 70)
+    love.graphics.print("Enter  keep editing", x + 20, y + 90)
 end
 
 function D.overlay(s, game)

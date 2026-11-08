@@ -62,6 +62,32 @@ function M.get(kind)
     return M.KINDS[kind]
 end
 
+-- Can this be stretched, and along which axis?
+--
+--   "none"   a thing with one real size: a car, a motorhome, a chair, a cone, a
+--            fire pit. Stretching them is not authoring, it is distorting.
+--   "length" one direction only: a hedge is long and thin, and pulling its width
+--            out makes a hedge-shaped hedge into a field.
+--   "free"   both: buildings, tents, pools, decking, gravel, grass, water.
+--
+-- Data rather than a shape rule, because the answer is a property of the thing.
+local RESIZE = {
+    hedge = "length",
+    building = "free",
+    tent = "free",
+    pool = "free",
+    car = "none",
+    rv = "none",
+    chair = "none",
+    cone = "none",
+    firepit = "none",
+}
+
+function M.resize_mode(kind)
+    if M.SURFACES[kind] then return "free" end
+    return RESIZE[kind] or "free"
+end
+
 -- The kind's defaults with the entry's own sizes laid over them, so level data
 -- can say `{ x = 40, y = 12, kind = "hedge", w = 26 }` and mean it. Returns nil
 -- for an unknown kind: the renderer falls back to a plain box rather than

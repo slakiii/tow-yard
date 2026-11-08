@@ -14,6 +14,7 @@ local levelfmt = require("lib.levelfmt")
 local codec = require("lib.codec")
 local share = require("lib.share")
 local doc = require("lib.edit.doc")
+local props = require("lib.props")
 local undo = require("lib.edit.undo")
 local autosave = require("lib.edit.autosave")
 local levelcheck = require("lib.levelcheck")
@@ -362,6 +363,22 @@ local function editor_keypressed(key)
     local e = game.editor
     local ctrl = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
 
+    -- the prompt owns the keyboard until it is answered
+    if e.prompt then
+        if key == "s" then
+            e.prompt = nil
+            editor_save()
+            open_menu()
+        elseif key == "escape" then
+            e.prompt = nil
+            editor_autosave_now()
+            open_menu()
+        elseif key == "return" or key == "kpenter" then
+            e.prompt = nil
+        end
+        return
+    end
+
     if e.typing then
         if key == "return" or key == "kpenter" then
             local name = (e.typing.buffer:gsub("^%s+", ""):gsub("%s+$", "")):sub(1, 60)
@@ -379,8 +396,14 @@ local function editor_keypressed(key)
     end
 
     if key == "escape" then
+        -- never leave silently with unsaved work: a copy is kept either way, but
+        -- "did my edit go anywhere?" is a question the editor should answer
         editor_autosave_now()
-        open_menu()
+        if e.dirty then
+            e.prompt = true
+        else
+            open_menu()
+        end
     elseif key == "f2" then
         e.typing = { buffer = e.doc.level.name or "", original = e.doc.level.name or "" }
     elseif key == "leftbracket" or key == "rightbracket" then
@@ -433,6 +456,8 @@ local function editor_mousepressed(x, y, button)
 
     -- the rail takes the click: picking a tool and then clicking the yard is how
     -- every editor works, and it is the answer to "how do I add something"
+    if e.prompt then return end
+
     if x <= draw.RAIL and button == 1 then
         local tool = draw.editor_tool_at(x, y, e.palette)
         if tool then
@@ -451,6 +476,17 @@ local function editor_mousepressed(x, y, button)
     if button ~= 1 then return end
 
     if e.tool == "select" then
+        -- a handle sits ON the prop's edge, so grabbing one must not be read as
+        -- "start dragging the whole prop"
+        local grab = 9 / e.cam.scale
+        for _, h in ipairs(doc.resize_handles(e.doc)) do
+            if math.abs(h.x - wx) <= grab and math.abs(h.y - wy) <= grab then
+                undo.push(e.undo, doc.snapshot(e.doc))
+                e.resizing = { axis = h.axis }
+                return
+            end
+        end
+
         local sel = doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
         local entry = sel and (sel.list == "bay" or sel.list == "spawn")
             and e.doc.level[sel.list] or (sel and (e.doc.level[sel.list] or {})[sel.index])
@@ -471,8 +507,44 @@ local function editor_mousepressed(x, y, button)
     end
 end
 
+local function editor_selection_entry()
+    local e = game.editor
+    local sel = e.doc.selection
+    if not sel then return nil end
+    if sel.list == "bay" or sel.list == "spawn" then return e.doc.level[sel.list] end
+    return (e.doc.level[sel.list] or {})[sel.index]
+end
+
 local function editor_mousemoved(x, y, dx, dy)
     local e = game.editor
+    if e.prompt then return end
+
+    if e.resizing then
+        local entry = editor_selection_entry()
+        if not entry then return end
+        local wx, wy = editor_to_world(x, y)
+        local c, sn = math.cos(entry.angle or 0), math.sin(entry.angle or 0)
+        local px, py = wx - entry.x, wy - entry.y
+        local lx, ly = px * c + py * sn, -px * sn + py * c
+
+        local fp = props.footprint(entry) or { w = entry.w or 1, h = entry.h or 1 }
+        local axis = e.resizing.axis
+        local w = (axis == "y") and fp.w or math.abs(lx) * 2
+        local h = (axis == "x") and fp.h or math.abs(ly) * 2
+        -- snap the SIZE, not the cursor: on a 0.5 m grid a drag should produce
+        -- 0.5 m sizes, or every hedge ends up 6.37 m long
+        if e.snap and e.snap > 0 then
+            w = math.max(e.snap, math.floor(w / e.snap + 0.5) * e.snap)
+            h = math.max(e.snap, math.floor(h / e.snap + 0.5) * e.snap)
+        end
+
+        doc.resize_to(e.doc, w, h)
+        e.dirty = true
+        editor_errors()
+        editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
+        return
+    end
+
     if e.pan then
         e.cam.x = e.pan.cx - (x - e.pan.x) / e.cam.scale
         e.cam.y = e.pan.cy + (y - e.pan.y) / e.cam.scale
@@ -503,6 +575,7 @@ local function editor_mousereleased(x, y, button)
     local e = game.editor
     e.pan = nil
     e.drag = nil
+    e.resizing = nil
 end
 
 local function editor_wheelmoved(dx, dy)
@@ -525,6 +598,7 @@ local function draw_editor()
     draw.editor_world(e.doc, e)
     love.graphics.pop()
     draw.editor_ui(e.doc, e, game)
+    draw.editor_prompt(e, game)
 end
 
 -- `love . --audit N` / `--audit all`: is the level parkable at all? A level no
@@ -791,8 +865,13 @@ local function smoke_step()
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
         game.editor.tool = "hedge"
-        local w = game.editor.doc.level.walls[1]
-        doc.pick(game.editor.doc, w.x, w.y, 0.4)
+        -- a wall that CAN be stretched, so the frame shows its handles
+        for _, w in ipairs(game.editor.doc.level.walls) do
+            if props.resize_mode(w.kind) == "free" then
+                doc.pick(game.editor.doc, w.x, w.y, 0.4)
+                break
+            end
+        end
         doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
         editor_errors()
         -- put the pointer over the yard so the frame shows the placement preview
@@ -820,7 +899,13 @@ local function smoke_step()
         doc.select(game.editor.doc, "bay")
     elseif smoke.frames == 22 then
         love.graphics.captureScreenshot("smoke-editor-new.png")
-    elseif smoke.frames >= 23 then
+    elseif smoke.frames == 23 then
+        -- the question Esc asks when there is unsaved work
+        game.editor.dirty = true
+        game.editor.prompt = true
+    elseif smoke.frames == 24 then
+        love.graphics.captureScreenshot("smoke-editor-prompt.png")
+    elseif smoke.frames >= 25 then
         print("SMOKE OK")
         love.event.quit(0)
     end

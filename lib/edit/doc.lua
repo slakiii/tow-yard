@@ -233,6 +233,101 @@ function M.rotate(doc, ddeg)
     return entry
 end
 
+-- Can the current selection be stretched? nil when nothing is selected.
+function M.resize_mode(doc)
+    local s = doc.selection
+    if not s then return nil end
+    if s.list == "bay" then return "free" end
+    if s.list == "spawn" then return "none" end
+    if SINGLE[s.list] then return "none" end
+    if s.list == "surfaces" then return "free" end
+    local entry = (doc.level[s.list] or {})[s.index]
+    return props.resize_mode(entry and entry.kind)
+end
+
+-- Where the resize handles are, in world coordinates. The view draws squares at
+-- these points and the mouse hit-tests them; keeping the geometry here means the
+-- one thing that can be wrong (which end is the length) is a test.
+--
+-- Returns {} when there is nothing storable to drag: no selection, or a kind with
+-- one size -- a car must not grow handles.
+function M.resize_handles(doc)
+    local entry, s = selected(doc)
+    if not entry then return {} end
+    local mode = M.resize_mode(doc)
+    if mode == "none" then return {} end
+
+    local x, y, w, h, angle = entry.x, entry.y, nil, nil, 0
+    if s.list == "bay" then
+        w, h, angle = entry.w, entry.h, entry.angle or 0
+    elseif s.list == "surfaces" or s.list == "walls" then
+        local fp = props.footprint(entry) or { w = entry.w, h = entry.h }
+        w, h, angle = fp.w, fp.h, entry.angle or 0
+    else
+        return {}
+    end
+
+    local c, sn = math.cos(angle), math.sin(angle)
+    local hw, hh = w / 2, h / 2
+    local function at(lx, ly)
+        return { x = x + lx * c - ly * sn, y = y + lx * sn + ly * c }
+    end
+
+    if mode == "length" then
+        -- two handles, on the ends of the longer axis
+        if w >= h then
+            return { { x = at(-hw, 0).x, y = at(-hw, 0).y, axis = "x" },
+                     { x = at(hw, 0).x, y = at(hw, 0).y, axis = "x" } }
+        end
+        return { { x = at(0, -hh).x, y = at(0, -hh).y, axis = "y" },
+                 { x = at(0, hh).x, y = at(0, hh).y, axis = "y" } }
+    end
+
+    local out = {}
+    for _, sx in ipairs({ -1, 1 }) do
+        for _, sy in ipairs({ -1, 1 }) do
+            local p = at(sx * hw, sy * hh)
+            out[#out + 1] = { x = p.x, y = p.y, axis = "both" }
+        end
+    end
+    return out
+end
+
+-- Absolute size, for a mouse drag on a handle. Sizes are symmetric about the
+-- centre: the prop stays where you put it and grows around itself, which is what
+-- you want when lining a hedge up against a kerb.
+function M.resize_to(doc, w, h)
+    local entry, s = selected(doc)
+    if not entry then return nil, "nothing selected" end
+    local mode = M.resize_mode(doc)
+    if mode == "none" then return nil, "this kind has one size" end
+
+    w = math.min(500, math.max(0.2, w or 0.2))
+    h = math.min(500, math.max(0.2, (h or w)))
+
+    if s.list == "cones" or (props.footprint(entry) or {}).shape == "circle" then
+        entry.r = math.max(0.1, w / 2)
+        return entry
+    end
+
+    if mode == "length" then
+        -- the local axis that is currently longer is the length; the other side
+        -- is the kind's own and does not move. A square hedge has no length yet,
+        -- so the drag decides which way it grows -- otherwise a hedge dragged
+        -- upwards would refuse to get taller.
+        local fp = props.footprint(entry) or { w = w, h = h }
+        local cw, ch = fp.w or 1, fp.h or 1
+        local long_is_w
+        if cw > ch then long_is_w = true
+        elseif ch > cw then long_is_w = false
+        else long_is_w = (w or 0) >= (h or 0) end
+        if long_is_w then h = ch else w = cw end
+    end
+
+    entry.w, entry.h = w, h
+    return entry
+end
+
 -- Grow from the CURRENT size, which may be the kind's default: a hedge added
 -- with no numbers is 6 x 0.7, and the first resize must start from that.
 function M.resize(doc, dw, dh)
@@ -244,13 +339,20 @@ function M.resize(doc, dw, dh)
     if not current then return nil, "selection is stale" end
 
     if SINGLE[s.list] then return nil, s.list .. " is resized by numbers, not by nudges" end
+    local mode = M.resize_mode(doc)
+    if mode == "none" then return nil, "this kind has one size" end
 
     if s.list == "cones" then
         entry.r = math.max(0.1, current.r + dw)
-    else
-        entry.w = math.max(0.5, current.w + dw)
-        entry.h = math.max(0.5, current.h + (dh or 0))
+        return entry
     end
+
+    local w = math.max(0.5, current.w + dw)
+    local h = math.max(0.5, current.h + (dh or 0))
+    if mode == "length" then
+        if current.w >= current.h then h = current.h else w = current.w end
+    end
+    entry.w, entry.h = w, h
     return entry
 end
 

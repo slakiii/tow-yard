@@ -41,6 +41,11 @@ Editing the built-in tracks: `E` on a campaign level opens it; `L` produces the
 with the same `id`, then `love tests` and `love . --audit N` before committing.
 `S` is for custom levels -- it saves a copy and leaves the shipped level alone.
 
+Only structural things stretch: buildings, tents, pools, decking, gravel, grass,
+water, the bay, and hedges (length only). A car, a motorhome, a chair, a cone, a
+fire pit and the spawn have one real size and offer no handles -- stretching them
+is not authoring, it is distorting.
+
 | Mouse | |
 |---|---|
 | click the rail | pick a tool (the name in the rail is the level's; `F2` renames it) |
@@ -54,7 +59,7 @@ with the same `id`, then `love tests` and `love . --audit N` before committing.
 |---|---|
 | `[` `]` | cycle the tool palette (`bay` and `spawn` place the goal and the start) |
 | `Q` `E` | rotate the selection 15 deg |
-| `+` `-` | resize |
+| drag a handle | resize (corner handles both ways, a hedge only along its length) |
 | `Del` | remove |
 | `Ctrl+Z` | undo (32 deep) |
 | `G` | snapping on/off (0.5 m, or free placement) |
@@ -64,7 +69,7 @@ with the same `id`, then `love tests` and `love . --audit N` before committing.
 | `S` | save to `custom/` (a shipped level's id becomes `<id>-copy`) |
 | `L` | copy a `lib/levels.lua` entry to the clipboard, and write it to `<save dir>/drafts/<id>.lua` |
 | `O` | copy the level as a share code |
-| `Esc` | back to the level select |
+| `Esc` | back to the level select (asks first if there are unsaved changes) |
 
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 `D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,

@@ -16,6 +16,9 @@ local M = { order = {
     "pick_finds_what_is_under_the_cursor",
     "move_and_rotate_touch_only_the_selection",
     "resize_starts_from_the_default_size",
+    "things_with_one_size_refuse_to_stretch",
+    "a_handle_drag_sets_an_absolute_size",
+    "handles_appear_only_where_stretching_means_something",
     "remove_deletes_and_clears_the_selection",
     "bay_and_spawn_can_be_set",
     "a_document_survives_a_snapshot",
@@ -92,11 +95,70 @@ function M.resize_starts_from_the_default_size()
     doc.resize(d, 4, 0.3)
     local after = props.footprint(hedge)
     H.expect(math.abs(after.w - (before.w + 4)) < 1e-9, "w grows from the default: " .. after.w)
-    H.expect(math.abs(after.h - (before.h + 0.3)) < 1e-9, "h grows from the default: " .. after.h)
+    H.expect(math.abs(after.h - before.h) < 1e-9,
+        "a hedge is length only -- pulling its width out makes a field: " .. after.h)
 
-    local cone = doc.add(d, "cone", 5, 5)
-    doc.resize(d, -0.35, 0)
-    H.expect(math.abs(props.footprint(cone).r - 0.1) < 1e-9, "a cone clamps at a tenth of a metre")
+    local b = doc.add(d, "building", 10, 10)
+    local fb = props.footprint(b)
+    doc.resize(d, 2, 1)
+    H.expect(math.abs(props.footprint(b).w - (fb.w + 2)) < 1e-9, "a building widens")
+    H.expect(math.abs(props.footprint(b).h - (fb.h + 1)) < 1e-9, "and deepens")
+end
+
+function M.things_with_one_size_refuse_to_stretch()
+    local d = doc.blank("test-noresize")
+    for _, kind in ipairs({ "car", "rv", "chair", "cone", "firepit" }) do
+        local e = doc.add(d, kind, 20, 20)
+        local fp = props.footprint(e)
+        H.expect(doc.resize_mode(d) == "none", kind .. " must not be resizable")
+        local ok, why = doc.resize(d, 2, 2)
+        H.expect(ok == nil, kind .. " refused a nudge: " .. tostring(ok))
+        H.expect(tostring(why):find("one size") ~= nil, kind .. ": the reason is stated")
+        H.expect(doc.resize_to(d, 9, 9) == nil, kind .. " refused a handle drag")
+        if fp.shape == "circle" then
+            H.expect(math.abs(props.footprint(e).r - fp.r) < 1e-9, kind .. " kept its radius")
+        else
+            H.expect(math.abs(props.footprint(e).w - fp.w) < 1e-9, kind .. " kept its width")
+        end
+    end
+
+    -- the spawn and the bay: one fixed size, one stretchable
+    doc.select(d, "spawn")
+    H.expect(doc.resize_mode(d) == "none", "the spawn has no size")
+    H.expect(doc.resize(d, 1, 1) == nil, "and refuses")
+    doc.select(d, "bay")
+    H.expect(doc.resize_mode(d) == "free", "the bay is authorable")
+end
+
+function M.a_handle_drag_sets_an_absolute_size()
+    local d = doc.blank("test-handle")
+
+    -- free: both axes, symmetric about the centre, so the centre does not move
+    local tent = doc.add(d, "tent", 30, 20)
+    local cx, cy = tent.x, tent.y
+    doc.resize_to(d, 9, 7)
+    H.expect(math.abs(props.footprint(tent).w - 9) < 1e-9, "width set")
+    H.expect(math.abs(props.footprint(tent).h - 7) < 1e-9, "height set")
+    H.expect(tent.x == cx and tent.y == cy, "and the thing did not move out from under the cursor")
+
+    -- length only: the short side is untouched whatever the drag says
+    local hedge = doc.add(d, "hedge", 10, 10)
+    doc.resize_to(d, 12, 3)
+    H.expect(math.abs(props.footprint(hedge).w - 12) < 1e-9, "the length follows the drag")
+    H.expect(math.abs(props.footprint(hedge).h - 0.7) < 1e-9, "the width does not")
+
+    -- a vertical hedge has its length on the other axis
+    local vert = doc.add(d, "hedge", 40, 10)
+    doc.resize_to(vert and vert.w and d, 0.7, 0.7)  -- square first
+    doc.resize_to(d, 0.7, 20)
+    H.expect(math.abs(props.footprint(vert).h - 20) < 1e-9,
+        "a hedge that is tall and thin stretches vertically: " .. props.footprint(vert).h)
+
+    -- clamps: nothing becomes zero or negative
+    doc.add(d, "pool", 20, 20)
+    doc.resize_to(d, -5, 0)
+    local fp = props.footprint(d.level.walls[#d.level.walls])
+    H.expect(fp.w >= 0.2 and fp.h >= 0.2, "a drag past the centre clamps: " .. fp.w .. " x " .. fp.h)
 end
 
 function M.remove_deletes_and_clears_the_selection()
@@ -263,6 +325,47 @@ function M.everything_added_here_can_be_written_and_read_back()
     H.expect(#back.walls == 2 and #back.cones == 1 and #back.surfaces == 1, "with every prop")
     H.expect(levelfmt.content_hash(levelfmt.resolve(back)) == levelfmt.content_hash(doc.level(d)),
         "and the same level that was on screen")
+end
+
+function M.handles_appear_only_where_stretching_means_something()
+    local d = doc.blank("handles")
+
+    doc.add(d, "building", 20, 20)
+    local corners = doc.resize_handles(d)
+    H.expect(#corners == 4, "a building offers four corners: " .. #corners)
+    local fp = props.footprint(d.level.walls[1])
+    local far = corners[1]
+    H.expect(math.abs(math.abs(far.x - 20) - fp.w / 2) < 1e-9, "at the footprint's corner x")
+    H.expect(math.abs(math.abs(far.y - 20) - fp.h / 2) < 1e-9, "and its corner y")
+
+    doc.add(d, "hedge", 30, 30)
+    local ends = doc.resize_handles(d)
+    H.expect(#ends == 2, "a hedge offers two ends: " .. #ends)
+    H.expect(ends[1].axis == "x" and ends[2].axis == "x", "along its length")
+    H.expect(math.abs(math.abs(ends[1].x - 30) - 3) < 1e-9, "at the ends, not the sides")
+
+    for _, kind in ipairs({ "car", "rv", "chair", "cone", "firepit" }) do
+        doc.add(d, kind, 5, 5)
+        H.expect(#doc.resize_handles(d) == 0, kind .. " must have no handles")
+    end
+
+    doc.select(d, "spawn")
+    H.expect(#doc.resize_handles(d) == 0, "and neither does the spawn")
+
+    doc.select(d, "bay")
+    H.expect(#doc.resize_handles(d) == 4, "the bay stretches, so it has corners")
+
+    d.selection = nil
+    H.expect(#doc.resize_handles(d) == 0, "nothing selected, nothing to grab")
+
+    -- a rotated building's corners follow the rotation
+    local rot = doc.add(d, "tent", 40, 20)
+    rot.angle = math.pi / 2
+    local hs = doc.resize_handles(d)
+    local minx, maxx = math.huge, -math.huge
+    for _, h in ipairs(hs) do minx = math.min(minx, h.x); maxx = math.max(maxx, h.x) end
+    H.expect(math.abs((maxx - minx) - props.footprint(rot).h) < 1e-9,
+        "a tent turned 90 degrees is as wide as it is deep now")
 end
 
 return M
