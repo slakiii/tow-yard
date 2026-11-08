@@ -18,11 +18,32 @@ M.KEYS = {
     handbrake = { "space" },
 }
 
+-- LÖVE 11.5's gamepad vocabulary. `isGamepadDown` RAISES on an unknown name, so a
+-- typo in here is not a wrong binding: it is a crash that appears the instant
+-- somebody plugs a controller in. That is exactly how "dpadup" shipped -- the
+-- suite ran with no pad attached, so the menu path was never executed once.
+M.BUTTONS = {
+    a = "a", b = "b", x = "x", y = "y",
+    back = "back", guide = "guide", start = "start",
+    leftstick = "leftstick", rightstick = "rightstick",
+    leftshoulder = "leftshoulder", rightshoulder = "rightshoulder",
+    dpup = "dpup", dpdown = "dpdown", dpleft = "dpleft", dpright = "dpright",
+}
+M.AXES = {
+    leftx = "leftx", lefty = "lefty", rightx = "rightx", righty = "righty",
+    triggerleft = "triggerleft", triggerright = "triggerright",
+}
+
+-- Device access goes through this seam so the suite can hand in a fake pad: a
+-- controller path that only runs when a controller is plugged in is a path that
+-- is never tested.
+M.get_joysticks = function() return love.joystick.getJoysticks() end
+
 M.PAD = {
-    reset = "b",
-    guide = "y",
-    pause = "start",
-    handbrake = "a",
+    reset = M.BUTTONS.b,
+    guide = M.BUTTONS.y,
+    pause = M.BUTTONS.start,
+    handbrake = M.BUTTONS.a,
 }
 
 -- Remap-friendly: everything above is data, nothing is hardcoded in a callback.
@@ -99,14 +120,14 @@ function M.new_state()
 end
 
 function M.init(st)
-    local list = love.joystick.getJoysticks()
+    local list = M.get_joysticks()
     st.joystick = list[1]
 end
 
 -- Called on love.joystickadded / love.joystickremoved. Re-fetching instead of
 -- caching matters: LÖVE invalidates joystick handles on reconnect.
 function M.refresh(st)
-    local list = love.joystick.getJoysticks()
+    local list = M.get_joysticks()
     st.joystick = list[1]
 end
 
@@ -125,11 +146,11 @@ function M.poll(st)
     local js = st.joystick
     if js and js:isConnected() and js:isGamepad() then
         M.merge_pad(input, {
-            leftx = js:getGamepadAxis("leftx"),
-            lt = js:getGamepadAxis("triggerleft"),
-            rt = js:getGamepadAxis("triggerright"),
-            dpleft = js:isGamepadDown("dpleft"),
-            dpright = js:isGamepadDown("dpright"),
+            leftx = js:getGamepadAxis(M.AXES.leftx),
+            lt = js:getGamepadAxis(M.AXES.triggerleft),
+            rt = js:getGamepadAxis(M.AXES.triggerright),
+            dpleft = js:isGamepadDown(M.BUTTONS.dpleft),
+            dpright = js:isGamepadDown(M.BUTTONS.dpright),
             handbrake = js:isGamepadDown(M.PAD.handbrake),
         })
     end
@@ -166,8 +187,9 @@ end
 -- Edge-triggered pad actions for the menus: a held direction must move the
 -- cursor once, not scroll it every frame.
 M.MENU_PAD = {
-    up = "dpadup", down = "dpaddown", left = "dpadleft", right = "dpadright",
-    confirm = "a", cancel = "b",
+    up = M.BUTTONS.dpup, down = M.BUTTONS.dpdown,
+    left = M.BUTTONS.dpleft, right = M.BUTTONS.dpright,
+    confirm = M.BUTTONS.a, cancel = M.BUTTONS.b,
 }
 M.MENU_NAMES = { "up", "down", "left", "right", "confirm", "cancel" }
 M.MENU_STICK = 0.55   -- a stick must cross this to count as a direction
@@ -190,8 +212,8 @@ function M.poll_menu(st)
         end
         -- sticks as four directions, with a threshold: an analogue axis at rest
         -- drifts a few percent and would otherwise walk the menu by itself
-        local lx = js:getGamepadAxis("leftx")
-        local ly = js:getGamepadAxis("lefty")
+        local lx = js:getGamepadAxis(M.AXES.leftx)
+        local ly = js:getGamepadAxis(M.AXES.lefty)
         if lx < -M.MENU_STICK then now.left = true
         elseif lx > M.MENU_STICK then now.right = true end
         if ly < -M.MENU_STICK then now.up = true

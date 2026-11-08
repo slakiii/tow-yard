@@ -62,9 +62,17 @@ Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 approaches the jackknife angle. `F1` shows the detected pad and whether it
 reports rumble support.
 
+In the menus the pad is `D-pad`/left stick to move, `A` confirm, `B` cancel
+(`Tab`/`L1`-style tab switching is keyboard-only for now).
+
 The two devices are live at the same time and merge per axis (strongest input
 wins), and both feed the same rate-limited steering model — the pad only
 supplies finer targets, never different physics.
+
+Button names come from `input.BUTTONS`/`input.AXES`, never from literals:
+`love.joystick.isGamepadDown` raises on a name LÖVE does not have, so a typo is a
+crash the moment a controller is plugged in. `tests/test_input_pad.lua` drives a
+fake pad that rejects any name outside that vocabulary.
 
 Levels: the game starts on the level select — `W/S` (or stick/d-pad) choose,
 `Enter` opens, `Esc` quits. Seven are shipped, in three series. `Tab` still

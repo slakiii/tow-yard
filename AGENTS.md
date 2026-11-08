@@ -61,6 +61,11 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
 - `lib/rig.lua` and `lib/session.lua` must not call `love.*` at all — not just
   at module level. That is what makes the physics testable and forces one
   physics for both input devices.
+- **Gamepad button names are data (`input.BUTTONS` / `input.AXES`), never
+  literals.** `isGamepadDown` raises on an unknown name, and a name typo is
+  invisible until somebody plugs in a pad — `"dpadup"` (LÖVE spells it `dpup`)
+  crashed the level select for a release. `M.get_joysticks` is a seam so
+  `tests/test_input_pad.lua` can drive a fake pad that rejects invalid names.
 - `lib/input.lua` is the only module that reads devices; it writes into
   `{ steer, throttle, brake, handbrake }` and nothing else. `steer` is a
   **target** wheel position in [-1, 1], not a rate: the ramp lives in `rig.step`.
