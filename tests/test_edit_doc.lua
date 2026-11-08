@@ -24,6 +24,8 @@ local M = { order = {
     "the_bay_and_the_spawn_can_be_picked",
     "the_bay_and_the_spawn_can_be_moved_and_turned",
     "paint_never_hides_the_goal",
+    "an_autosave_is_only_worth_restoring_when_it_differs",
+    "everything_added_here_can_be_written_and_read_back",
 } }
 
 function M.a_document_does_not_mutate_its_level()
@@ -221,6 +223,46 @@ function M.paint_never_hides_the_goal()
 
     local sel = doc.pick(d, 5, 5, 0.2)
     H.expect(sel and sel.list == "surfaces", "but bare paint is still selectable")
+end
+
+function M.an_autosave_is_only_worth_restoring_when_it_differs()
+    local lvl = levels.get(1)
+    local d = doc.new(lvl)
+
+    H.expect(doc.same_level(doc.level(d), lvl), "an untouched document is the level")
+    H.expect(doc.same_level(nil, lvl) == false, "and nothing is not the level")
+
+    -- an edit makes it different, so the autosave is worth offering
+    doc.add(d, "cone", 20, 20)
+    H.expect(doc.same_level(doc.level(d), lvl) == false, "an edited document is not")
+
+    -- the name IS authored content: an unsaved rename is unsaved work, so it must
+    -- read as different and be restorable. Only id/series/order are excluded.
+    local renamed = doc.new(lvl)
+    renamed.level.name = "Angled bay (mine)"
+    H.expect(doc.same_level(doc.level(renamed), lvl) == false, "a rename is unsaved work")
+
+    local moved = doc.new(lvl)
+    moved.level.id = "some-other-id"
+    H.expect(doc.same_level(doc.level(moved), lvl), "the id is identity, not content")
+end
+
+function M.everything_added_here_can_be_written_and_read_back()
+    -- The document is encoded in the AUTHORED form, so a prop with no explicit
+    -- size comes out as "... 0" and the parser refuses the whole level. Adding a
+    -- cone and saving was producing an unreadable file.
+    local d = doc.blank("added")
+    doc.add(d, "hedge", 10, 10)
+    doc.add(d, "building", 20, 10)
+    doc.add(d, "cone", 30, 10)
+    doc.add(d, "gravel", 40, 10)
+
+    local text = doc.snapshot(d)
+    local back, err = levelfmt.decode(text)
+    H.expect(back ~= nil, "every kind the palette offers must encode: " .. tostring(err))
+    H.expect(#back.walls == 2 and #back.cones == 1 and #back.surfaces == 1, "with every prop")
+    H.expect(levelfmt.content_hash(levelfmt.resolve(back)) == levelfmt.content_hash(doc.level(d)),
+        "and the same level that was on screen")
 end
 
 return M

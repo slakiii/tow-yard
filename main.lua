@@ -15,6 +15,7 @@ local codec = require("lib.codec")
 local share = require("lib.share")
 local doc = require("lib.edit.doc")
 local undo = require("lib.edit.undo")
+local autosave = require("lib.edit.autosave")
 local levelcheck = require("lib.levelcheck")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
@@ -203,6 +204,23 @@ local function snap(v, step)
     return math.floor(v / step + 0.5) * step
 end
 
+-- Autosave policy lives in lib/edit/autosave.lua (tested); this is the wiring.
+local function editor_autosave(level_id, text, force)
+    local e = game.editor
+    if not e or not text then return end
+    local ok = autosave.save(disk, level_id, text, e.autosave_state or {}, love.timer.getTime(), force)
+    e.autosave_state = e.autosave_state or {}
+    if ok == false and force and text ~= e.autosave_state.text then
+        say("could not autosave", 4)
+    end
+end
+
+local function editor_autosave_now()
+    local e = game.editor
+    if not e or not e.dirty then return end
+    editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc), true)
+end
+
 local function editor_errors()
     local e = game.editor
     e.errors = levelcheck.errors(doc.level(e.doc))
@@ -216,6 +234,7 @@ local function editor_edit(fn)
     fn()
     e.dirty = true
     editor_errors()
+    editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
 end
 
 local function open_editor(lvl)
@@ -237,6 +256,26 @@ local function open_editor(lvl)
         dirty = false,
     }
     editor_errors()
+
+    -- unsaved work from a previous session, offered back. Restoring is a rescue
+    -- here, not a surprise: the file only exists because this id was being edited
+    -- and never saved.
+    local text = autosave.load(disk, lvl.id)
+    if text then
+        local saved = levelfmt.decode(text)
+        if saved and not doc.same_level(saved, lvl) then
+            if doc.restore(game.editor.doc, text) then
+                editor_errors()
+                game.editor.dirty = true
+                game.editor.autosave_state = { text = text }
+                local info = love.filesystem.getInfo(autosave.path(lvl.id))
+                say("restored unsaved edits from "
+                    .. (info and os.date("%H:%M", info.modtime) or "earlier")
+                    .. " - S saves, L exports", 10)
+            end
+        end
+    end
+
     game.mode = MODE.editor
 end
 
@@ -263,6 +302,8 @@ local function editor_export_lua()
     love.filesystem.createDirectory("drafts")
     local path = "drafts/" .. lvl.id .. ".lua"
     love.filesystem.write(path, text)
+    autosave.clear(disk, e.origin_id or lvl.id)
+    e.autosave_state = {}
     say("levels.lua entry for " .. lvl.id .. " copied, and written to "
         .. love.filesystem.getSaveDirectory() .. "/" .. path, 9)
 end
@@ -293,6 +334,8 @@ local function editor_save()
     end
     game.custom = levelfmt.scan_custom(disk)
     e.dirty = false
+    autosave.clear(disk, e.origin_id or lvl.id)
+    e.autosave_state = {}
     say("saved " .. name)
 end
 
@@ -336,6 +379,7 @@ local function editor_keypressed(key)
     end
 
     if key == "escape" then
+        editor_autosave_now()
         open_menu()
     elseif key == "f2" then
         e.typing = { buffer = e.doc.level.name or "", original = e.doc.level.name or "" }
@@ -450,6 +494,7 @@ local function editor_mousemoved(x, y, dx, dy)
             entry.x, entry.y = nx, ny
             e.dirty = true
             editor_errors()
+            editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
         end
     end
 end
@@ -916,6 +961,11 @@ function love.keypressed(key)
     elseif game.mode == MODE.editor then
         editor_keypressed(key)
     end
+end
+
+-- Closing the window is not a save dialog: keep what was typed.
+function love.quit()
+    editor_autosave_now()
 end
 
 function love.textinput(text)

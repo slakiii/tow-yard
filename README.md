@@ -28,6 +28,14 @@ and its index entry together.
 
 Editor: `love . --edit`, or `E` on a level in the select.
 
+The editor **autosaves** as you work, to `drafts/<id>.autosave.tylevel` in the
+save directory (Linux `~/.local/share/love/tow-yard/`, Windows
+`%APPDATA%\LOVE\tow-yard\`, macOS `~/Library/Application Support/LOVE/tow-yard/`).
+Reopening that level offers the unsaved work back; `S` or `L` clears it. `L` also
+writes `drafts/<id>.lua`, the `lib/levels.lua` entry. So a crash, a forgotten
+keypress or a closed window no longer costs a level -- and if the game will not
+start, the autosave is a plain text file you can open in an editor.
+
 Editing the built-in tracks: `E` on a campaign level opens it; `L` produces the
 `lib/levels.lua` entry for it (clipboard and `drafts/`); paste that over the entry
 with the same `id`, then `love tests` and `love . --audit N` before committing.

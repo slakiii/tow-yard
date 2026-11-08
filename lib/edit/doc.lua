@@ -52,6 +52,14 @@ function M.blank(id, name)
     }
 end
 
+-- Is this the same level as that one, by content? After an autosave is found on
+-- disk, the question "does it differ from what we just opened?" decides whether
+-- restoring it is a rescue or an annoyance. Pure, so the rule is a test.
+function M.same_level(a, b)
+    if not a or not b then return false end
+    return levelfmt.content_hash(levelfmt.resolve(a)) == levelfmt.content_hash(levelfmt.resolve(b))
+end
+
 -- A fresh id that nothing answers to. Ids key progress, ghosts and the custom
 -- level's filename, so two levels called "untitled" are two levels sharing one
 -- best time and one ghost.
@@ -131,6 +139,20 @@ function M.add(doc, kind, x, y)
     else
         list = "surfaces"
         entry.w, entry.h = 6, 4      -- paint needs a size to exist at all
+    end
+
+    -- Carry the kind's sizes explicitly. The document is what gets written, and
+    -- the encoder writes the AUTHORED form: a cone with no radius encodes as
+    -- "cone cone 20 20 0", which the parser (rightly) refuses. Sizes equal to the
+    -- kind default are still omitted from the file by the encoder, so nothing
+    -- gets noisier -- it just cannot be lost on the way out.
+    local fp = props.footprint(entry)
+    if fp then
+        if fp.shape == "circle" then
+            entry.r = fp.r
+        else
+            entry.w, entry.h = fp.w, fp.h
+        end
     end
 
     local l = doc.level[list]

@@ -88,7 +88,8 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   -- each with its own cursor; the renderer must ask `menu.rows(model)`, never
   read `model.rows`, or every tab draws empty), and `lib/edit/doc.lua` +
   `lib/edit/undo.lua` are the editor's document and its snapshot stack. The
-  editor's view draws AUTHORED data, not the resolved level: the file is what
+  `lib/edit/autosave.lua` writes the open document to `drafts/` every two seconds
+  and on exit, over the injected disk; the editor's view draws AUTHORED data, not the resolved level: the file is what
   you are editing, so what it says is what you should see.
 
 ## Code Style
