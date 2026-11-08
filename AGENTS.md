@@ -17,7 +17,8 @@ love . --smoke                           # render every screen once, print SMOKE
 xvfb-run -a -s "-screen 0 1280x720x24" timeout 30 love . --smoke   # same, headless box
 love . --audit 4                         # can level 4 be parked? exit 0 = a line exists
 love . --audit all                       # every level (~25 s each, full grid only)
-love . --edit                            # the level editor (dev tool, see README)
+love . --edit                            # the level editor (see README)
+python3 tools/apply-level.py <id>        # splice a drafts/<id>.lua into lib/levels.lua
 timeout 4 love .                         # legacy boot smoke (exit 124 = survived)
 ```
 

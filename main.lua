@@ -38,6 +38,13 @@ local smoke = { enabled = false, frames = 0, frozen = false }
 -- key press cannot leak into the screen that is not showing.
 local MODE = { play = "play", menu = "menu", editor = "editor" }
 
+-- Flip this to false for a build that ships without the editor: `E` in the level
+-- select, `--edit` and the editor mode all go away. Note that users cannot change
+-- the shipped tracks either way -- the editor writes only into the save
+-- directory, and saving an id that belongs to a shipped level becomes
+-- "<id>-copy" -- but a build with no editor is the simpler promise to make.
+local EDITOR_ENABLED = true
+
 -- Everything the editor can place. "select" is a tool, not a kind: the palette
 -- is one list so the player's eye does not have to sort it into two.
 local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool",
@@ -237,6 +244,7 @@ local function editor_edit(fn)
 end
 
 local function open_editor(lvl)
+    if not EDITOR_ENABLED then return end
     local W, H = love.graphics.getDimensions()
     local b = lvl.bounds
     game.editor = {

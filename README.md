@@ -36,6 +36,34 @@ writes `drafts/<id>.lua`, the `lib/levels.lua` entry. So a crash, a forgotten
 keypress or a closed window no longer costs a level -- and if the game will not
 start, the autosave is a plain text file you can open in an editor.
 
+### Authoring the built-in tracks
+
+The campaign lives in `lib/levels.lua`. The editor writes data, never source, so
+there is one deliberate step between them:
+
+1. `love .` → pick a campaign level → `E`. (`love . --edit` opens level 1.)
+2. Edit: pick a tool in the rail, click the yard; drag to move, drag a handle to
+   resize, `Q`/`E` to turn, `Ctrl+Z` to undo, `F2` to rename. It autosaves as you
+   go, so nothing is lost by closing the window.
+3. `V` checks the level is winnable (quick audit, ~2 s), `P` plays it in place and
+   `Esc` comes back. The audit's time is a floor, never a par.
+4. `L` writes `drafts/<id>.lua` -- the `lib/levels.lua` entry for this level --
+   and puts the same text on the clipboard.
+5. `python3 tools/apply-level.py <id>` splices that draft into `lib/levels.lua`
+   (brace-matched, id-checked) and runs `love tests`.
+6. `love . --audit <n>` on the full grid, then playtest it. Measure par from the
+   playtest; never scale the old number.
+7. Commit.
+
+Applying a draft replaces the entry wholesale, so that one entry is normalised to
+the generated style and **loses any comments inside it** -- the tool says so when
+that happens. The rest of the file is untouched.
+
+Users cannot change the shipped tracks: the editor writes only into the save
+directory, and `S` on a shipped level saves a copy as `<id>-copy`. For a build
+that ships with no editor at all, set `EDITOR_ENABLED = false` in `main.lua`
+(`E`, `N` and `--edit` all stop working).
+
 Editing the built-in tracks: `E` on a campaign level opens it; `L` produces the
 `lib/levels.lua` entry for it (clipboard and `drafts/`); paste that over the entry
 with the same `id`, then `love tests` and `love . --audit N` before committing.
