@@ -199,6 +199,10 @@ function M.solve(level, opts)
     local nx, ny = -ay, ax
 
     local best, tried, reached, solved = nil, 0, 0, 0
+    -- Why the approaches that failed failed. "Gave up without a bump" and "bumped
+    -- something" are different verdicts about a level: the first says the probe
+    -- could not steer there, the second says the yard is in the way.
+    local stalled, bumped = 0, 0
 
     for _, pre in ipairs(grid.pre) do
         for _, dist in ipairs(grid.dist) do
@@ -213,7 +217,13 @@ function M.solve(level, opts)
                     -- forwards first, then the same pose reached in reverse
                     local r = M.drive_in(level, pose, { pre = pre })
                     if not r.reached then r = M.drive_in(level, pose, { pre = pre, force_reverse = true }) end
-                    if r.reached then reached = reached + 1 end
+                    if r.reached then
+                        reached = reached + 1
+                    elseif (r.bumps or 0) > 0 then
+                        bumped = bumped + 1
+                    else
+                        stalled = stalled + 1
+                    end
                     if r.parked then
                         solved = solved + 1
                         if not best or r.time < best.time then
@@ -243,7 +253,8 @@ function M.solve(level, opts)
     end
 
     return { level = level, solved = best ~= nil, best = best,
-             tried = tried, reached = reached, parked = solved }
+             tried = tried, reached = reached, parked = solved,
+             stalled = stalled, bumped = bumped }
 end
 
 function M.format(res, index)
@@ -253,6 +264,18 @@ function M.format(res, index)
         res.solved and "winnable" or "NO LINE FOUND")
     add("  poses tried %d, staging pose reached %d, parked %d",
         res.tried, res.reached, res.parked)
+    -- Two very different failures look identical in the counts above, so say
+    -- which one this is instead of guessing on the player's behalf.
+    if not res.solved and res.reached == 0 then
+        add("  none reachable: %d gave up without a bump, %d bumped something",
+            res.stalled or 0, res.bumped or 0)
+        if (res.bumped or 0) == 0 then
+            add("  nothing was hit -- the probe could not steer to any pose in time,")
+            add("  which usually means the poses sit behind the spawn. Playtest it.")
+        else
+            add("  the yard is in the way: clear the approach corridor, not the bay.")
+        end
+    end
     if res.best then
         add("  best %.2f s, %d bumps, par %s", res.best.time, res.best.bumps,
             tostring(res.level.par))

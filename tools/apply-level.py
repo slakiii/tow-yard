@@ -15,6 +15,7 @@ place: brace-matched, id-checked, and verified by running the test suite.
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -167,8 +168,16 @@ def main():
     # the suite runs in the repo that owns the catalogue, which is not necessarily
     # where this script lives (it is not, when the catalogue is a worktree)
     repo = os.path.dirname(os.path.dirname(os.path.abspath(args.levels)))
+    if not shutil.which("love"):
+        print("the level is spliced, but `love` is not on PATH here, so the suite "
+              "did not run: love tests before you commit")
+        return 0
     print("running the suite in %s..." % repo)
-    result = subprocess.run(["love", "tests"], cwd=repo, capture_output=True, text=True)
+    try:
+        result = subprocess.run(["love", "tests"], cwd=repo, capture_output=True, text=True)
+    except OSError as err:
+        print("could not run love tests: %s -- run it by hand before you commit" % err)
+        return 0
     tail = [ln for ln in result.stdout.strip().split("\n") if ln.strip()][-3:]
     for ln in tail:
         print("  " + ln)
