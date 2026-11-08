@@ -14,6 +14,10 @@ local M = { order = {
     "frames_hold_what_the_sim_consumed",
     "a_finished_run_ignores_more_input",
     "record_is_capped",
+    "recording_starts_with_the_first_action",
+    "steering_at_standstill_counts_but_does_not_start_the_clock",
+    "a_stored_run_loses_its_idle_prefix",
+    "the_ghost_waits_for_the_player",
     "a_run_round_trips_through_text",
     "encode_is_byte_stable",
     "a_run_stays_small",
@@ -254,6 +258,108 @@ function M.verify_ignores_the_claimed_time()
     H.expect(math.abs(final.time - s.final.time) < 1e-9,
              "the recomputed time must win, got " .. tostring(final.time))
     H.expect(math.abs(final.time - 9.00) > 1, "and the header's 9.00 must never be reported")
+end
+
+function M.recording_starts_with_the_first_action()
+    local lvl = levels.get(1)
+    local s = session.new(lvl)
+    local r = run.new(lvl)
+    local idle = { steer = 0, throttle = 0, brake = 0, handbrake = false }
+
+    -- two seconds of nobody touching anything: no frames, no clock
+    for _ = 1, 240 do
+        if run.recording(s, idle) then run.record(r, idle) end
+        session.update(s, idle, 1 / 120)
+    end
+    H.expect(#r.frames == 0, "waiting is not a run: " .. #r.frames .. " frames")
+    H.expect(s.started == false, "and the clock has not started")
+
+    local drive = { steer = 0, throttle = 1, brake = 0, handbrake = false }
+    for _ = 1, 60 do
+        if run.recording(s, drive) then run.record(r, drive) end
+        session.update(s, drive, 1 / 120)
+    end
+    H.expect(#r.frames == 60, "the run starts on the first action: " .. #r.frames)
+
+    -- and once it has started, letting go is still part of the run
+    for _ = 1, 30 do
+        if run.recording(s, idle) then run.record(r, idle) end
+        session.update(s, idle, 1 / 120)
+    end
+    H.expect(#r.frames == 90, "coasting is recorded: " .. #r.frames)
+end
+
+function M.steering_at_standstill_counts_but_does_not_start_the_clock()
+    local s = session.new(levels.get(1))
+    local steer = { steer = -1, throttle = 0, brake = 0, handbrake = false }
+
+    -- the wheel is physics state: a run that dropped these frames would replay
+    -- with the wheels straight and diverge from what actually happened
+    H.expect(run.recording(s, steer), "turning the wheel is recorded")
+    session.update(s, steer, 1 / 120)
+    H.expect(s.started == false, "but it does not start the clock")
+    H.expect(s.t == 0, "so no time is charged for it: " .. s.t)
+end
+
+function M.a_stored_run_loses_its_idle_prefix()
+    local lvl = levels.get(1)
+    local s, r = session.new(lvl), run.new(lvl)
+    local idle = { steer = 0, throttle = 0, brake = 0, handbrake = false }
+    local drive = { steer = 0, throttle = 1, brake = 0, handbrake = false }
+
+    -- a run recorded the old way: the level opens, then the player acts
+    for _ = 1, 120 do run.record(r, idle); session.update(s, idle, 1 / 120) end
+    for _ = 1, 60 do run.record(r, drive); session.update(s, drive, 1 / 120) end
+    H.expect(#r.frames == 180, "fixture: 180 frames")
+
+    local dropped = run.trim(r)
+    H.expect(dropped == 120, "the idle prefix is dropped: " .. dropped)
+    H.expect(#r.frames == 60, "and what is left is the drive")
+
+    -- replaying it reaches the same place at the same time: the prefix carried no
+    -- input, so removing it cannot change the outcome
+    local replay = run.replay(lvl, r)
+    H.expect(math.abs(replay.t - s.t) < 1e-9,
+        "same clock after the trim: " .. tostring(replay.t) .. " vs " .. tostring(s.t))
+    H.expect(math.abs(replay.rig.x - s.rig.x) < 1e-9
+        and math.abs(replay.rig.y - s.rig.y) < 1e-9
+        and math.abs(replay.rig.th - s.rig.th) < 1e-9
+        and math.abs(replay.rig.ph - s.rig.ph) < 1e-9,
+        "and the same pose")
+
+    -- a pause in the middle of the run is not a prefix: only the front is trimmed
+    local s2, r2 = session.new(lvl), run.new(lvl)
+    for _ = 1, 10 do run.record(r2, drive); session.update(s2, drive, 1 / 120) end
+    for _ = 1, 10 do run.record(r2, idle); session.update(s2, idle, 1 / 120) end
+    H.expect(run.trim(r2) == 0, "coasting after the start stays in the run")
+end
+
+function M.the_ghost_waits_for_the_player()
+    local lvl = levels.get(1)
+    local s, r = session.new(lvl), run.new(lvl)
+    local drive = { steer = 0, throttle = 1, brake = 0, handbrake = false }
+    for _ = 1, 20 do
+        run.record(r, drive)
+        session.update(s, drive, 1 / 120)
+    end
+
+    local ghost = { run = r, s = session.new(lvl), step = 0 }
+
+    -- before the player moves, the ghost does not move: no time, no frames
+    H.expect(run.advance(ghost, 0) == 0, "nothing happens before the start")
+    H.expect(ghost.step == 0, "and the ghost is still on its first frame")
+
+    -- then it follows the player's step count, one frame per step
+    H.expect(run.advance(ghost, 5) == 5, "five steps, five frames")
+    H.expect(ghost.s.started, "which starts the ghost's own clock")
+
+    -- asking for more than the run holds stops at the end, not past it
+    H.expect(run.advance(ghost, 500) == 15, "the rest of the run: " .. ghost.step)
+    H.expect(ghost.step == #r.frames, "and no further: " .. ghost.step)
+
+    -- a paused game does not call advance at all, so the ghost cannot run ahead;
+    -- and neither can it if the player's count goes backwards
+    H.expect(run.advance(ghost, 3) == 0, "never backwards")
 end
 
 return M

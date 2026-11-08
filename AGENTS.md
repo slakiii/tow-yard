@@ -73,6 +73,12 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   and contains no rules. It also owns the **mode switch** (`menu` / `play`):
   each mode has its own update/draw/keypressed, and one dispatch block at the
   bottom is the only place that knows more than one screen exists.
+- **Recording starts with the first thing the player does, not when the level
+  opens** (`run.recording`). Waiting time is not part of an attempt, and a ghost
+  that replays your thinking is a ghost that stands still at the line. The ghost
+  advances on the player's own post-start step count (`run.advance`), so both
+  leave the line together; pausing cannot let it drive off. Old stored runs are
+  trimmed on load (`run.trim`) because they carry that prefix.
 - A run is what makes a ghost honest: `lib/run.lua` records one quantised frame
   per physics step, serialises it to four bytes per frame, replays it through a
   fresh session, and `verify` refuses a run from other geometry or another build

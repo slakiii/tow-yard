@@ -13,7 +13,7 @@ love . --audit 4  # is level 4 parkable at all? exit 0 = a line exists
 ```
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
-`R` reset, `P` pause, `H` ghost (off / trail / rig), `Y` copy a share code,
+`R` reset, `P` pause, `H` ghost (rig / trail / off), `Y` copy a share code,
 `I` import the clipboard, `F1` debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 

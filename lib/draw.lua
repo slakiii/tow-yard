@@ -756,16 +756,24 @@ D.GHOST = { 0.74, 0.46, 0.88 }
 function D.ghost(ghost, mode)
     if mode == "rig" then
         local rigged = ghost.s.rig
-        set(D.GHOST, 0.20)
-        love.graphics.polygon("fill", flat(rig.caravan_poly(rigged)))
-        love.graphics.polygon("fill", flat(rig.car_poly(rigged)))
-        -- outline BOTH bodies: a caravan alone reads as a marker, and the point
-        -- of this mode is "that was a rig, and it was not mine"
-        set(D.GHOST, 0.62)
-        love.graphics.polygon("line", flat(rig.caravan_poly(rigged)))
-        love.graphics.polygon("line", flat(rig.car_poly(rigged)))
+        local van = rig.caravan_poly(rigged)
+        local car = rig.car_poly(rigged)
+
+        -- A silhouette, not a diagram: one flat shape per body, plus the hitch
+        -- between them so it reads as a rig. Widths are METRES here (the transform
+        -- multiplies them), which is why the trail used to be a 30 px rope.
+        set(D.GHOST, 0.24)
+        love.graphics.polygon("fill", flat(van))
+        love.graphics.polygon("fill", flat(car))
+
+        set(D.GHOST, 0.10)
+        love.graphics.setLineWidth(0.10)
+        love.graphics.polygon("line", flat(van))
+        love.graphics.polygon("line", flat(car))
         local hx, hy = rig.coupling_xy(rigged)
-        love.graphics.circle("fill", hx, hy, 0.16)
+        local bx, by = at(rigged.x, rigged.y, rigged.th, -rig.CAR.rear_oh, 0)
+        love.graphics.line(hx, hy, bx, by)
+        love.graphics.setLineWidth(1)
         return
     end
 
@@ -777,8 +785,8 @@ function D.ghost(ghost, mode)
             line[#line + 1] = pts[i][1]
             line[#line + 1] = pts[i][2]
         end
-        set(D.GHOST, 0.55)
-        love.graphics.setLineWidth(2)
+        set(D.GHOST, 0.5)
+        love.graphics.setLineWidth(0.12)   -- 2 px at the game's scale, not 30
         love.graphics.line(line)
         love.graphics.setLineWidth(1)
     end

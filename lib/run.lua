@@ -40,6 +40,40 @@ function M.new(level)
     }
 end
 
+-- Does this frame belong in the run?
+--
+-- Recording starts with the first thing the player does, not when the level
+-- opens. A run that begins with eight seconds of nobody touching the controls is
+-- eight seconds of ghost standing still, and a replay that watches you wait.
+--
+-- Steer counts even though it does not start the clock: the wheel position is
+-- physics state, and dropping the frames where the player turned it at a standstill
+-- would make the replay diverge from what happened.
+function M.recording(s, input)
+    if s and s.started then return true end
+    local i = input or {}
+    return (i.throttle or 0) > 0 or (i.brake or 0) > 0
+        or i.handbrake == true or math.abs(i.steer or 0) > 1e-6
+end
+
+local function idle_frame(f)
+    return not f or ((f.throttle or 0) == 0 and (f.brake or 0) == 0
+        and (f.steer or 0) == 0 and f.handbrake ~= true)
+end
+
+-- Drop the frames before the first thing the player did. Runs recorded before
+-- recording started with the first action carry that prefix; replaying it would
+-- make the ghost hesitate at the start line while the player drives, and it costs
+-- nothing to remove: those frames have no input, so the pose does not change.
+function M.trim(run)
+    local dropped = 0
+    while #run.frames > 0 and idle_frame(run.frames[1]) do
+        table.remove(run.frames, 1)
+        dropped = dropped + 1
+    end
+    return dropped
+end
+
 function M.record(run, input)
     if run.closed or #run.frames >= M.MAX_FRAMES then return run end
     local q = session.quantise(input)
@@ -80,6 +114,23 @@ end
 -- The same drive, sampled, for drawing a ghost trail: computing the whole line
 -- up front costs one replay (milliseconds) and lets the trail be revealed as the
 -- player advances instead of storing a pose per frame twice.
+-- Advance a ghost to the player's own step count.
+--
+-- Never with wall-clock time: pausing must not let it drive off, and it must not
+-- start before the player does -- the whole point of both counters starting at
+-- the first action is that you and the ghost leave the line together.
+function M.advance(ghost, steps)
+    local moved = 0
+    while ghost.step < (steps or 0) do
+        local f = ghost.run.frames[ghost.step + 1]
+        if not f or ghost.s.parked then break end
+        ghost.step = ghost.step + 1
+        session.update(ghost.s, f, rig.STEP)
+        moved = moved + 1
+    end
+    return moved
+end
+
 function M.trace(level, run, every)
     every = every or 6
     local s = session.new(level)

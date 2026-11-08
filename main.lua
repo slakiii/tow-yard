@@ -55,7 +55,7 @@ local game = {
     new_best = false,
     gain = nil,
     ghost = nil,
-    ghost_mode = "trail",     -- off | trail | rig
+    ghost_mode = "rig",       -- rig | trail | off: the silhouette is the honest one
     custom = {},              -- imported levels, beside the campaign
     toast = nil,
     editor = nil,
@@ -95,6 +95,9 @@ local function load_level_object(lvl)
         local text = progress.ghost_text(game.progress, game.level)
         local g = text and run.decode(text, game.codec)
         if g and run.verify(game.level, g) then
+            -- runs stored before recording began with the first action carry an
+            -- idle prefix; without this the ghost hesitates at the start line
+            run.trim(g)
             game.ghost = {
                 run = g, trail = run.trace(game.level, g),
                 s = session.new(game.level), step = 0,
@@ -166,12 +169,7 @@ end
 -- time: pausing must not let it drive off.
 local function advance_ghost()
     if not game.ghost then return end
-    while game.ghost.step < game.steps do
-        local f = game.ghost.run.frames[game.ghost.step + 1]
-        if not f or game.ghost.s.parked then break end
-        game.ghost.step = game.ghost.step + 1
-        session.update(game.ghost.s, f, DT)
-    end
+    run.advance(game.ghost, game.steps)
 end
 
 -- The model is rebuilt on entry so the marks are what the store says now: a park
@@ -739,9 +737,12 @@ local function update_play(dt)
     -- input the sim is about to consume. A parked session stops the loop, so the
     -- run cannot grow while the result card is up.
     while game.acc >= DT and steps < MAX_STEPS and not game.s.parked do
-        run.record(game.run, game.input)
+        if run.recording(game.s, game.input) then run.record(game.run, game.input) end
         session.update(game.s, game.input, DT)
-        game.steps = game.steps + 1
+        -- the ghost counts the player's own steps, and only once the player has
+        -- started: otherwise the ghost waits out your thinking time and then
+        -- jumps forward when you finally move
+        if game.s.started then game.steps = game.steps + 1 end
         game.acc = game.acc - DT
         steps = steps + 1
     end
@@ -975,8 +976,10 @@ local function play_keypressed(key)
     elseif key == "i" then
         import_text(love.system.getClipboardText() or "")
     elseif key == "h" then
-        game.ghost_mode = (game.ghost_mode == "off" and "trail")
-            or (game.ghost_mode == "trail" and "rig") or "off"
+        local order = { "rig", "trail", "off" }
+        local at_mode = 1
+        for i, m in ipairs(order) do if m == game.ghost_mode then at_mode = i end end
+        game.ghost_mode = order[(at_mode % #order) + 1]
     elseif key == "f1" then
         game.debug = not game.debug
     elseif key == "f5" then
