@@ -28,6 +28,11 @@ and its index entry together.
 
 Editor: `love . --edit`, or `E` on a level in the select.
 
+Editing the built-in tracks: `E` on a campaign level opens it; `L` produces the
+`lib/levels.lua` entry for it (clipboard and `drafts/`); paste that over the entry
+with the same `id`, then `love tests` and `love . --audit N` before committing.
+`S` is for custom levels -- it saves a copy and leaves the shipped level alone.
+
 | Mouse | |
 |---|---|
 | wheel | zoom (6-40 px/m, around the cursor) |
@@ -46,7 +51,9 @@ Editor: `love . --edit`, or `E` on a level in the select.
 | `F2` | rename the level |
 | `V` | verify with the winnability audit (~2 s, blocking) |
 | `P` | play the level in place, `Esc` back to the editor |
-| `S` | save to `custom/`, `O` copy the level as a share code |
+| `S` | save to `custom/` (a shipped level's id becomes `<id>-copy`) |
+| `L` | copy a `lib/levels.lua` entry to the clipboard, and write it to `<save dir>/drafts/<id>.lua` |
+| `O` | copy the level as a share code |
 | `Esc` | back to the level select |
 
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or

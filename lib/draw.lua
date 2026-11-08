@@ -281,6 +281,66 @@ end
 
 D.ART = ART
 
+-- The goal, drawn once and used by both the game and the editor. The editor must
+-- not have its own idea of what a bay looks like: what you author is what you
+-- play, and an editor that draws a plain green rectangle teaches the wrong thing.
+--
+-- Split in two because the order matters in play: the fill sits under the props
+-- and the rig, the arrow sits over them ("it has to be visible when the caravan
+-- is parked on top of it").
+local function bay_fill(bay, o)
+    o = o or {}
+    local poly = geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)
+    local state = o.state or "idle"
+
+    set(D.C.bay, o.fill_alpha or 0.45)
+    love.graphics.polygon("fill", flat(poly))
+    if state == "wrong" then
+        set(D.C.warn, 0.85)
+    elseif state == "good" then
+        set(D.C.bay_line, 1)
+    else
+        set(D.C.bay_line, o.line_alpha or 0.55)
+    end
+    -- widths are in METRES here: the transform multiplies them by px/m, so 0.12
+    -- is ~2 px at the game's scale and a "2" would be a 30 px green border
+    love.graphics.setLineWidth(o.line or 0.12)
+    love.graphics.polygon("line", flat(poly))
+    love.graphics.setLineWidth(1)
+    return poly
+end
+
+-- The bay has a REQUIRED FACING, so it has to show it: without the arrow the
+-- same rectangle accepts one orientation and rejects the mirror of it, which
+-- reads as a bug rather than as a rule.
+local function bay_arrow(bay, o)
+    o = o or {}
+    local state = o.state or "idle"
+    local c, sn = math.cos(bay.angle), math.sin(bay.angle)
+    local reach = bay.w * (o.reach or 0.30)
+    local head_x, head_y = bay.x + c * reach, bay.y + sn * reach
+    local neck_x, neck_y = bay.x + c * reach * 0.45, bay.y + sn * reach * 0.45
+    local alpha = (o.alpha or 1) * ((state == "good") and 0.30 or 1.0)
+    local acol = state == "wrong" and D.C.warn or D.C.bay_line
+    local nx, ny = -sn, c
+
+    -- dark halo underneath, so the arrow survives being drawn over the caravan
+    set(D.C.ground, 0.75 * alpha)
+    love.graphics.setLineWidth(o.halo or 0.34)
+    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
+    love.graphics.polygon("fill", head_x, head_y,
+        neck_x + nx * 0.62, neck_y + ny * 0.62,
+        neck_x - nx * 0.62, neck_y - ny * 0.62)
+    set(acol, 0.95 * alpha)
+    love.graphics.setLineWidth(o.line or 0.18)
+    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
+    love.graphics.polygon("fill", head_x, head_y,
+        neck_x + nx * 0.5, neck_y + ny * 0.5,
+        neck_x - nx * 0.5, neck_y - ny * 0.5)
+    love.graphics.setLineWidth(1)
+    return c, sn
+end
+
 function D.scene(lvl, s, opts)
     local b = lvl.bounds
 
@@ -305,17 +365,7 @@ function D.scene(lvl, s, opts)
     local aligned = angle_off <= bay.tol
     local state = (not in_bay) and "idle" or (aligned and "good" or "wrong")
 
-    set(D.C.bay, s.park_hold > 0 and 0.75 or 0.45)
-    love.graphics.polygon("fill", flat(bay_poly))
-    if state == "wrong" then
-        set(D.C.warn, 0.85)
-    elseif state == "good" then
-        set(D.C.bay_line, 1)
-    else
-        set(D.C.bay_line, 0.55)
-    end
-    love.graphics.setLineWidth(0.12)
-    love.graphics.polygon("line", flat(bay_poly))
+    bay_fill(bay, { state = state, fill_alpha = s.park_hold > 0 and 0.75 or 0.45 })
 
     -- walls
     for _, w in ipairs(lvl.walls) do
@@ -421,26 +471,7 @@ function D.scene(lvl, s, opts)
     -- required facing overlay, drawn last so the rig cannot hide it
     -- arrow along the bay axis, pointing the way the
     -- caravan's coupling has to end up
-    local c, sn = math.cos(bay.angle), math.sin(bay.angle)
-    local reach = bay.w * 0.30
-    local head_x, head_y = bay.x + c * reach, bay.y + sn * reach
-    local neck_x, neck_y = bay.x + c * reach * 0.45, bay.y + sn * reach * 0.45
-    local arrow_alpha = (state == "good") and 0.30 or 1.0
-    local acol = state == "wrong" and D.C.warn or D.C.bay_line
-    local nx, ny = -sn, c
-    -- dark halo underneath, so the arrow survives being drawn over the caravan
-    set(D.C.ground, 0.75 * arrow_alpha)
-    love.graphics.setLineWidth(0.34)
-    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
-    love.graphics.polygon("fill", head_x, head_y,
-        neck_x + nx * 0.62, neck_y + ny * 0.62,
-        neck_x - nx * 0.62, neck_y - ny * 0.62)
-    set(acol, 0.95 * arrow_alpha)
-    love.graphics.setLineWidth(0.18)
-    love.graphics.line(bay.x - c * reach, bay.y - sn * reach, neck_x, neck_y)
-    love.graphics.polygon("fill", head_x, head_y,
-        neck_x + nx * 0.5, neck_y + ny * 0.5,
-        neck_x - nx * 0.5, neck_y - ny * 0.5)
+    local c, sn = bay_arrow(bay, { state = state })
 
     -- ghost of the correct pose, but only while the caravan is sitting in the
     -- bay the wrong way round. Permanent training wheels would give away the
@@ -767,10 +798,10 @@ end
 -- edge hides the very thing you are lining up: the first version was a 3 px
 -- solid orange box 0.25 m outside the footprint, which at 15 px/m is a frame you
 -- cannot see through. Four short L's say "this one" and leave the middle clear.
-local function brackets(poly, frac)
-    frac = frac or 0.28
+local function brackets(poly, arm, wide)
+    arm, wide = arm or 0.8, wide or 0.1
     local n = #poly / 2
-    love.graphics.setLineWidth(1.5)
+    love.graphics.setLineWidth(wide)
     for k = 0, n - 1 do
         local i = k * 2
         local x, y = poly[i + 1], poly[i + 2]
@@ -778,8 +809,15 @@ local function brackets(poly, frac)
         local ni = ((k + 1) % n) * 2
         local px, py = poly[pi + 1], poly[pi + 2]
         local nx, ny = poly[ni + 1], poly[ni + 2]
-        love.graphics.line(x, y, x + (px - x) * frac, y + (py - y) * frac)
-        love.graphics.line(x, y, x + (nx - x) * frac, y + (ny - y) * frac)
+        -- arms are a LENGTH in metres, clamped to the edge they run along, so a
+        -- small prop gets brackets of its own size instead of brackets bigger
+        -- than the prop
+        local lp = math.min(arm, math.sqrt((px - x) ^ 2 + (py - y) ^ 2) * 0.45)
+        local ln = math.min(arm, math.sqrt((nx - x) ^ 2 + (ny - y) ^ 2) * 0.45)
+        love.graphics.line(x, y, x + (px - x) / math.max(1e-9, math.sqrt((px - x) ^ 2 + (py - y) ^ 2)) * lp,
+            y + (py - y) / math.max(1e-9, math.sqrt((px - x) ^ 2 + (py - y) ^ 2)) * lp)
+        love.graphics.line(x, y, x + (nx - x) / math.max(1e-9, math.sqrt((nx - x) ^ 2 + (ny - y) ^ 2)) * ln,
+            y + (ny - y) / math.max(1e-9, math.sqrt((nx - x) ^ 2 + (ny - y) ^ 2)) * ln)
     end
     love.graphics.setLineWidth(1)
 end
@@ -787,6 +825,11 @@ end
 function D.editor_world(doc, state)
     local lvl = doc.level
     local b = lvl.bounds
+    -- Line widths are multiplied by the camera scale: a "2" is 30 px at 15 px/m.
+    -- Everything below is expressed in screen pixels and divided back by the
+    -- zoom, so the border is the same border at 6 px/m and at 40 px/m.
+    local scale = (state and state.cam and state.cam.scale) or 15
+    local u = 1 / scale
 
     set(D.C.ground)
     love.graphics.rectangle("fill", b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
@@ -797,16 +840,18 @@ function D.editor_world(doc, state)
     -- surfaces, so a grid drawn first is a grid nobody ever sees (it was, on the
     -- first frame of this screen). 1 m thin, 5 m brighter, because a level is
     -- authored in metres and nothing else.
+    love.graphics.setLineWidth(u)
     for x = math.ceil(b.x0), math.floor(b.x1) do
         local major = (math.floor(x + 0.5) % 5 == 0)
-        set(D.C.text, major and 0.26 or 0.11)
+        set(D.C.text, major and 0.24 or 0.10)
         love.graphics.line(x, b.y0, x, b.y1)
     end
     for y = math.ceil(b.y0), math.floor(b.y1) do
         local major = (math.floor(y + 0.5) % 5 == 0)
-        set(D.C.text, major and 0.26 or 0.11)
+        set(D.C.text, major and 0.24 or 0.10)
         love.graphics.line(b.x0, y, b.x1, y)
     end
+    love.graphics.setLineWidth(1)
 
     for _, w in ipairs(lvl.walls or {}) do
         local fp = props.footprint(w)
@@ -817,49 +862,60 @@ function D.editor_world(doc, state)
         if fp then D.prop(c.x, c.y, c.angle or 0, fp) end
     end
 
-    -- the goal
+    -- the goal, drawn by the same function the game uses: same fill, same
+    -- outline, same required-facing arrow. Authoring must look like playing.
     local bay = lvl.bay
-    set(D.C.bay, 0.45)
-    love.graphics.polygon("fill", flat(geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)))
-    set(D.C.bay_line)
-    love.graphics.setLineWidth(2)
-    love.graphics.polygon("line", flat(geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)))
-    love.graphics.setLineWidth(1)
+    bay_fill(bay, { line = 2 * u, line_alpha = 0.7 })
+    bay_arrow(bay, { line = 2 * u, halo = 4 * u })
 
-    -- where the rig starts, and which way it points
+    -- where the rig starts, and which way it points. An outlined car, not a
+    -- filled one: at 15 px/m a filled car is a 65 x 30 px slab of warm colour
+    -- sitting in the middle of the yard you are trying to author.
     local rigged = rig.new(lvl.spawn.x, lvl.spawn.y, lvl.spawn.th)
-    set(D.C.car, 0.75)
-    love.graphics.polygon("fill", flat(rig.car_poly(rigged)))
-    set(D.C.text, 0.9)
-    local ax = lvl.spawn.x + 2.2 * math.cos(lvl.spawn.th)
-    local ay = lvl.spawn.y + 2.2 * math.sin(lvl.spawn.th)
-    love.graphics.line(lvl.spawn.x, lvl.spawn.y, ax, ay)
-    love.graphics.circle("fill", ax, ay, 0.25)
+    local car = rig.car_poly(rigged)
+    set(D.C.car, 0.10)
+    love.graphics.polygon("fill", flat(car))
+    set(D.C.car, 0.95)
+    love.graphics.setLineWidth(2 * u)
+    love.graphics.polygon("line", flat(car))
+    set(D.C.text, 0.85)
+    love.graphics.line(lvl.spawn.x, lvl.spawn.y,
+        lvl.spawn.x + 2.2 * math.cos(lvl.spawn.th),
+        lvl.spawn.y + 2.2 * math.sin(lvl.spawn.th))
+    local nx, ny = -math.sin(lvl.spawn.th), math.cos(lvl.spawn.th)
+    local hx = lvl.spawn.x + 2.6 * math.cos(lvl.spawn.th)
+    local hy = lvl.spawn.y + 2.6 * math.sin(lvl.spawn.th)
+    love.graphics.polygon("fill", hx, hy,
+        hx - 0.7 * math.cos(lvl.spawn.th) + 0.35 * nx, hy - 0.7 * math.sin(lvl.spawn.th) + 0.35 * ny,
+        hx - 0.7 * math.cos(lvl.spawn.th) - 0.35 * nx, hy - 0.7 * math.sin(lvl.spawn.th) - 0.35 * ny)
+    love.graphics.setLineWidth(1)
 
     -- the selection, drawn last so nothing sits on top of it
     local sel = doc.selection
     if sel then
+        -- 10 px arms, 1.5 px wide, whatever the zoom: the frame says "this one"
+        -- and gives the element back the moment you stop looking at it
         set(D.C.cone)
+        local arm, wide = 10 * u, 1.5 * u + 0
         if sel.list == "bay" then
-            brackets(flat(geom.rect_poly(bay.x, bay.y, bay.w + 0.15, bay.h + 0.15, bay.angle)))
+            brackets(flat(geom.rect_poly(bay.x, bay.y, bay.w, bay.h, bay.angle)), arm, wide)
         elseif sel.list == "spawn" then
-            love.graphics.setLineWidth(1.5)
-            love.graphics.circle("line", lvl.spawn.x, lvl.spawn.y, 1.5)
-            love.graphics.setLineWidth(1)
+            love.graphics.setLineWidth(wide)
+            love.graphics.circle("line", lvl.spawn.x, lvl.spawn.y, 1.6)
         else
             local entry = (lvl[sel.list] or {})[sel.index]
             local fp = entry and props.footprint(entry)
             if fp then
                 if fp.shape == "circle" then
-                    love.graphics.setLineWidth(1.5)
-                    love.graphics.circle("line", entry.x, entry.y, fp.r + 0.12)
-                    love.graphics.setLineWidth(1)
+                    love.graphics.setLineWidth(wide)
+                    love.graphics.circle("line", entry.x, entry.y, fp.r + 0.05)
                 else
-                    brackets(flat(geom.rect_poly(entry.x, entry.y, fp.w + 0.15, fp.h + 0.15,
-                        entry.angle or 0)))
+                    brackets(flat(geom.rect_poly(entry.x, entry.y, fp.w, fp.h,
+                        entry.angle or 0)), arm, wide)
                 end
             end
         end
+        love.graphics.setLineWidth(1)
     end
 end
 
@@ -940,7 +996,7 @@ function D.editor_ui(doc, state, game)
         .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
     love.graphics.print(hint, 16, H - 52)
     set(D.C.text, 0.85)
-    local keys = "V verify   P play   S save   O export   F2 name   Esc level select"
+    local keys = "V verify   P play   S save   L levels.lua   O share   F2 name   Esc select"
     love.graphics.print(keys, 16, H - 28)
 
     love.graphics.setFont(fonts.small)

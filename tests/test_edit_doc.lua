@@ -23,6 +23,7 @@ local M = { order = {
     "a_blank_level_round_trips_through_the_custom_store",
     "the_bay_and_the_spawn_can_be_picked",
     "the_bay_and_the_spawn_can_be_moved_and_turned",
+    "paint_never_hides_the_goal",
 } }
 
 function M.a_document_does_not_mutate_its_level()
@@ -207,6 +208,19 @@ function M.the_bay_and_the_spawn_can_be_moved_and_turned()
     H.expect(d.level.spawn ~= nil, "so the level still has a start")
 
     H.expect(doc.select(d, "walls") == nil, "only single records select by name")
+end
+
+function M.paint_never_hides_the_goal()
+    -- a dressed level: the whole yard painted, which is every real level
+    local d = doc.blank("painted")
+    doc.add(d, "gravel", 30, 20)          -- 6 x 4 default, so cover the yard
+    d.level.surfaces[1].w, d.level.surfaces[1].h = 60, 40
+
+    H.expect(doc.pick(d, 22, 20, 0.2).list == "bay", "the goal is still pickable through paint")
+    H.expect(doc.pick(d, 48, 20, 0.2).list == "spawn", "and so is the start")
+
+    local sel = doc.pick(d, 5, 5, 0.2)
+    H.expect(sel and sel.list == "surfaces", "but bare paint is still selectable")
 end
 
 return M

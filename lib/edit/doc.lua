@@ -162,16 +162,9 @@ function M.pick(doc, x, y, tol)
         end
     end
 
-    for i = #lvl.surfaces, 1, -1 do
-        local s = lvl.surfaces[i]
-        if geom.point_in_poly(x, y, geom.rect_poly(s.x, s.y, s.w, s.h, s.angle or 0)) then
-            doc.selection = { list = "surfaces", index = i }
-            return doc.selection
-        end
-    end
-
-    -- the spawn marker is small and the bay is large, so the order here is the
-    -- opposite of the props: a prop under the cursor is always the thing you meant
+    -- The start and the goal come before paint. A dressed level covers its whole
+    -- yard with surfaces, so while surfaces were picked first, the bay was
+    -- unpickable on every real level -- which is exactly how it felt.
     if (spawn.x - x) ^ 2 + (spawn.y - y) ^ 2 <= (1.2 + tol) ^ 2 then
         doc.selection = { list = "spawn" }
         return doc.selection
@@ -180,6 +173,18 @@ function M.pick(doc, x, y, tol)
         doc.selection = { list = "bay" }
         return doc.selection
     end
+
+    -- paint last: it is ground, it is huge, and it is almost never the thing you
+    -- are pointing at
+    for i = #lvl.surfaces, 1, -1 do
+        local s = lvl.surfaces[i]
+        if geom.point_in_poly(x, y, geom.rect_poly(s.x, s.y, s.w, s.h, s.angle or 0)) then
+            doc.selection = { list = "surfaces", index = i }
+            return doc.selection
+        end
+    end
+
+    -- and the props still win, because they are small and sit on top
 
     doc.selection = nil
     return nil

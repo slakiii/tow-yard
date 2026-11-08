@@ -22,6 +22,7 @@ local M = { order = {
     "a_custom_level_is_stored_and_scaned_back",
     "a_broken_custom_file_is_a_warning_not_a_crash",
     "a_deleted_custom_level_leaves_the_index",
+    "the_exported_lua_entry_is_the_same_level",
 } }
 
 function M.every_shipped_level_round_trips()
@@ -212,6 +213,26 @@ function M.a_deleted_custom_level_leaves_the_index()
     levelfmt.delete_custom(disk, "long-way-back")
     local none = levelfmt.scan_custom(disk)
     H.expect(#none == 0, "deleting the last one empties the tab")
+end
+
+function M.the_exported_lua_entry_is_the_same_level()
+    -- The built-in authoring loop: edit in the editor, L, paste into levels.lua.
+    -- That loop is only honest if the literal pasted back is the same level, so
+    -- this compiles the export and compares content hashes -- geometry, par, the
+    -- lot. (loadstring over our own generated text, never over shared data.)
+    for _, lvl in ipairs(levels.ALL) do
+        local text = levelfmt.to_lua(lvl)
+        local chunk, err = loadstring("return " .. text)
+        H.expect(chunk ~= nil, "the export must compile for " .. lvl.id .. ": " .. tostring(err))
+        local back = chunk()
+        H.expect(back.id == lvl.id, lvl.id .. ": id survives")
+        H.expect(back.series == lvl.series, lvl.id .. ": series survives")
+        H.expect(back.order == lvl.order, lvl.id .. ": order survives")
+        H.expect(levelfmt.content_hash(levelfmt.resolve(back)) == levelfmt.content_hash(lvl),
+            lvl.id .. ": the pasted block must be the same level")
+        H.expect(#back.walls == #lvl.walls and #back.cones == #lvl.cones,
+            lvl.id .. ": every prop survives")
+    end
 end
 
 return M

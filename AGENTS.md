@@ -103,6 +103,11 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   Putting the coupling on the rear axle is geometrically impossible at large
   articulation and its 0.35 m overhang moves the jackknife angle by tens of
   degrees.
+- **Line widths are in METRES inside a camera transform.** `setLineWidth(2)` under
+  a 15 px/m scale draws a 30 px border. Every width in `lib/draw.lua` that is set
+  inside a scaled transform is a world length (0.12 m is ~2 px in play); the
+  editor divides screen pixels by the zoom instead. Two "enormous" UI bugs were
+  this, measured at 30 px before the fix.
 - The caravan body is a **tapered polygon**. A full-width rectangle from the
   coupling reports a collision at ~25 deg, which makes the game unplayable.
   `tests/test_rig.lua:bodies_touch_near_jackknife_not_earlier` guards this.

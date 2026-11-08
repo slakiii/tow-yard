@@ -225,6 +225,7 @@ local function open_editor(lvl)
             y = (b.y0 + b.y1) / 2,
             scale = math.min((W - 300) / (b.x1 - b.x0), (H - 120) / (b.y1 - b.y0)),
         },
+        origin_id = lvl.id,      -- what this document was opened as; see editor_export_lua
         tool = "select",
         snap = SNAP,
         palette = PALETTE,
@@ -241,6 +242,25 @@ local function new_level()
     for _, l in ipairs(game.custom) do taken[#taken + 1] = l.id end
     -- the authored level, not the document: open_editor takes a level and wraps it
     open_editor(doc.blank(doc.free_id(taken, "untitled"), "Untitled").level)
+end
+
+-- The way a BUILT-IN level gets authored. The editor writes data, and levels.lua
+-- is where the campaign's data lives, so the honest bridge is a table literal:
+-- copy it, paste it over the entry of the same id, run the tests and the audit.
+local function editor_export_lua()
+    local e = game.editor
+    local lvl = doc.level(e.doc)
+    -- the id it was opened as: editing a shipped level and pressing S renames the
+    -- copy, but exporting must still produce the block that replaces the original
+    lvl.id = e.origin_id or lvl.id
+
+    local text = levelfmt.to_lua(lvl)
+    love.system.setClipboardText(text)
+    love.filesystem.createDirectory("drafts")
+    local path = "drafts/" .. lvl.id .. ".lua"
+    love.filesystem.write(path, text)
+    say("levels.lua entry for " .. lvl.id .. " copied, and written to "
+        .. love.filesystem.getSaveDirectory() .. "/" .. path, 9)
 end
 
 -- A custom level may not take a shipped level's id: progress, ghosts and the
@@ -349,6 +369,8 @@ local function editor_keypressed(key)
         game.mode = MODE.play
     elseif key == "s" then
         editor_save()
+    elseif key == "l" then
+        editor_export_lua()
     elseif key == "o" then
         local text = share.bundle(doc.level(e.doc), nil, game.codec, "user")
         if text then
