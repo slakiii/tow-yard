@@ -7,6 +7,7 @@ local MODULES = {
     "tests/test_geom",
     "tests/test_rig",
     "tests/test_session",
+    "tests/test_sfx",
     "tests/test_levels",
     "tests/test_props",
     "tests/test_draw",
