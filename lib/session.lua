@@ -46,6 +46,22 @@ local function clone_cones(src)
     return out
 end
 
+-- Something happened. The session is the only module that knows WHEN: a wall
+-- revert, the dwell gate catching, the clock crossing par. The shell drains
+-- this list after its step loop, so "did that bump make a sound, once" stays a
+-- headless question -- diffing state in the shell is where cues double-fire
+-- (bump_flash ticks down over 0.35 s) and where they get missed entirely.
+local function cue(s, ev)
+    s.cues[#s.cues + 1] = ev
+end
+
+-- Hand the queued events to the caller and start a fresh list.
+function M.drain(s)
+    local out = s.cues
+    s.cues = {}
+    return out
+end
+
 function M.new(level)
     local r = rig.new(level.spawn.x, level.spawn.y, level.spawn.th)
     local walls = {}
@@ -68,6 +84,9 @@ function M.new(level)
         parked = false,
         final = nil,
         prev = nil,
+        cues = {},
+        gear_seen = nil,      -- label the last step reported, so the R transition is an edge
+        par_cued = false,
     }
 end
 
@@ -149,6 +168,9 @@ function M.guide_visible(s)
 end
 
 local function revert(s, reason)
+    -- captured before the rebuild: the bump's volume is the speed at impact, and
+    -- after this line the rig is stopped
+    local impact = math.abs(s.rig.v)
     if s.prev then
         s.rig.x, s.rig.y = s.prev.x, s.prev.y
         s.rig.th, s.rig.ph = s.prev.th, s.prev.ph
@@ -157,6 +179,7 @@ local function revert(s, reason)
     s.bumps = s.bumps + 1
     s.bump_flash = 0.35
     s.last_bump = reason
+    cue(s, { kind = "bump", cause = reason, speed = impact })
 end
 
 function M.update(s, input, dt)
@@ -166,10 +189,28 @@ function M.update(s, input, dt)
 
     if not s.started and ((input.throttle or 0) > 0 or (input.brake or 0) > 0) then
         s.started = true
+        cue(s, { kind = "start" })
     end
-    if s.started then s.t = s.t + dt end
+    if s.started then
+        s.t = s.t + dt
+        -- the 3-star window closing is a thing that happens, not a thing you
+        -- notice afterwards on the result card
+        if s.level.par and not s.par_cued and s.t > s.level.par then
+            s.par_cued = true
+            cue(s, { kind = "par" })
+        end
+    end
 
     local cmd = M.derive(s, input, dt)
+
+    -- Edge, not level: the dwell gate engages R once, and the cue belongs on the
+    -- step it engages -- afterwards the gear is simply R for the whole manoeuvre.
+    local g = M.gear(s)
+    if g ~= s.gear_seen then
+        s.gear_seen = g
+        if g == "R" then cue(s, { kind = "gear", gear = "R" }) end
+    end
+
     s.prev = { x = s.rig.x, y = s.rig.y, th = s.rig.th, ph = s.rig.ph }
     rig.step(s.rig, cmd, dt)
 
@@ -196,6 +237,7 @@ function M.update(s, input, dt)
         if not c.hit and (geom.circle_overlap_poly(c.x, c.y, c.r, car)
             or geom.circle_overlap_poly(c.x, c.y, c.r, van)) then
             c.hit = true
+            cue(s, { kind = "cone", speed = math.abs(s.rig.v) })
             s.bumps = s.bumps + 1
             s.bump_flash = 0.3
             s.last_bump = "cone"
@@ -230,6 +272,7 @@ function M.check_park(s, dt)
         if s.park_hold >= M.PARK_HOLD then
             s.parked = true
             s.final = { time = s.t, bumps = s.bumps, angle_err = math.deg(err) }
+            cue(s, { kind = "park", stars = M.grade(s) })
         end
     else
         s.park_hold = 0

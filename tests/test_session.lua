@@ -23,6 +23,14 @@ local M = { order = {
     "quantise_is_idempotent",
     "quantise_snaps_to_its_grid",
     "quantised_input_still_parks_level_1",
+    "drain_empties_the_queue",
+    "start_cue_fires_once_on_the_first_pedal",
+    "gear_cue_fires_when_reverse_engages",
+    "wall_bump_cue_carries_the_impact_speed",
+    "jackknife_cue_is_not_a_wall_bump",
+    "cone_cue_fires_once",
+    "park_cue_carries_the_stars",
+    "par_cue_fires_once",
 } }
 
 local DT = 1 / 120
@@ -206,6 +214,119 @@ function M.quantised_input_still_parks_level_1()
     end
     H.expect(s.parked, "level 1 must still park on quantised input")
     H.expect(s.final.bumps == 0, "and still without touching anything")
+end
+
+-- ---------------------------------------------------------------------------
+-- Cues: the session is the only module that knows when something HAPPENED.
+-- The shell drains this list after its step loop and hands it to the mixer, so
+-- "did that bump make a sound" and "did it fire twice" stay headless questions
+-- instead of something you check by listening.
+-- ---------------------------------------------------------------------------
+
+local function kinds(list, kind)
+    local out = {}
+    for _, c in ipairs(list) do if c.kind == kind then out[#out + 1] = c end end
+    return out
+end
+
+function M.drain_empties_the_queue()
+    local s = session.new(fixtures.field())
+    step(s, forward(), 1)
+    local first = session.drain(s)
+    H.expect(#first > 0, "the first pedal must queue a cue")
+    H.expect(#session.drain(s) == 0, "draining twice must not replay the same cues")
+end
+
+function M.start_cue_fires_once_on_the_first_pedal()
+    local s = session.new(fixtures.field())
+    step(s, idle(), 60)
+    H.expect(#kinds(session.drain(s), "start") == 0, "waiting at the line is not a start")
+    step(s, forward(), 60)
+    H.expect(#kinds(session.drain(s), "start") == 1, "the first pedal starts exactly one clock")
+    step(s, forward(), 60)
+    H.expect(#kinds(session.drain(s), "start") == 0, "and only once")
+end
+
+function M.gear_cue_fires_when_reverse_engages()
+    -- The dwell gate is invisible physics: without a cue at the transition the
+    -- player has no way to know the gear caught, and "reverse does not work"
+    -- is the report you get instead.
+    local s = session.new(fixtures.field())
+    local n, first_at = 0, nil
+    for i = 1, 240 do
+        session.update(s, backward(), DT)
+        for _, c in ipairs(session.drain(s)) do
+            if c.kind == "gear" and c.gear == "R" then n, first_at = n + 1, first_at or i end
+        end
+    end
+    H.expect(s.rig.v < 0, "fixture: the rig should be reversing")
+    H.expect(n == 1, "reverse must clunk once, got " .. n)
+    H.expect(first_at and first_at <= 24, "the clunk must land at the transition, not later")
+end
+
+function M.wall_bump_cue_carries_the_impact_speed()
+    -- revert() zeroes the speed, so the cue has to carry it: a scrape at 0.3 m/s
+    -- and a slam at 11 m/s must not sound the same.
+    local lvl = fixtures.field()
+    lvl.walls = { { x = 0, y = 0, w = 4, h = 4 } }   -- already under the rig
+    local s = session.new(lvl)
+    s.rig.v = 3.0
+    session.update(s, idle(), DT)
+    local bumps = kinds(session.drain(s), "bump")
+    H.expect(#bumps == 1, "a wall hit queues one bump, got " .. #bumps)
+    H.expect(bumps[1].cause == "wall", "cause should be wall, got " .. tostring(bumps[1].cause))
+    H.expect(bumps[1].speed > 2.5, "the cue carries the speed at impact, got " .. tostring(bumps[1].speed))
+end
+
+function M.jackknife_cue_is_not_a_wall_bump()
+    local s = session.new(fixtures.field())
+    s.rig.ph = math.rad(85)
+    session.update(s, idle(), DT)
+    local bumps = kinds(session.drain(s), "bump")
+    H.expect(#bumps == 1 and bumps[1].cause == "jackknife",
+        "over-articulation is its own sound: the fix is to straighten, not to back off")
+end
+
+function M.cone_cue_fires_once()
+    local lvl = fixtures.field()
+    lvl.cones = { { x = 0, y = 4, r = 0.35 } }
+    local s = session.new(lvl)
+    s.rig.th, s.rig.ph = math.pi / 2, math.pi / 2
+    local n = 0
+    for _ = 1, 360 do
+        session.update(s, forward(), DT)
+        n = n + #kinds(session.drain(s), "cone")
+    end
+    H.expect(s.cones[1].hit, "fixture: the cone should be knocked")
+    H.expect(n == 1, "a knocked cone makes one sound, got " .. n)
+end
+
+function M.park_cue_carries_the_stars()
+    local s = session.new(fixtures.field())
+    place_in_bay(s, 0)
+    local parks = {}
+    for _ = 1, 60 do
+        session.update(s, idle(), DT)
+        for _, c in ipairs(session.drain(s)) do
+            if c.kind == "park" then parks[#parks + 1] = c end
+        end
+    end
+    H.expect(s.parked, "fixture: it must park")
+    H.expect(#parks == 1, "one park, one chime, got " .. #parks)
+    H.expect(parks[1].stars == session.grade(s), "the chime carries the grade it earned")
+end
+
+function M.par_cue_fires_once()
+    local lvl = fixtures.field()
+    lvl.par = 2
+    local s = session.new(lvl)
+    local n = 0
+    for _ = 1, 480 do                      -- 4 s of driving, par is 2
+        session.update(s, forward(), DT)
+        n = n + #kinds(session.drain(s), "par")
+    end
+    H.expect(s.t > lvl.par, "fixture: the clock should be past par")
+    H.expect(n == 1, "crossing par ticks once, got " .. n)
 end
 
 return M
