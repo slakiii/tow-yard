@@ -14,13 +14,13 @@ love . --audit 4  # is level 4 parkable at all? exit 0 = a line exists
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
 `R` restart the level you are on (campaign or custom), `P` pause, `H` ghost
-(rig / trail / off), `Y` copy a share code, `I` import the clipboard, `F1`
-debug, `Esc` back to the level select.
+(rig / trail / off), `Y` copy a share code, `I` import the clipboard, `M`
+sound on/off, `F1` debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 
 Level select: `W`/`S` choose, `Enter` open, `Tab` switch tab (Campaign /
 Custom levels), `N` new level, `E` open the selected level in the editor,
-`X` delete a custom level, `I` paste a share code, `Esc` quit.
+`X` delete a custom level, `I` paste a share code, `M` sound on/off, `Esc` quit.
 
 Custom levels live in `custom/` inside the LÖVE save directory (the empty tab
 prints the exact path). They are a separate tab from the campaign, they carry
@@ -157,6 +157,9 @@ Plans live in `.hermes/plans/`:
 | `lib/edit/undo.lua` | snapshot undo (pure) |
 | `lib/codec.lua` | zlib + base64 over love.data, passed into the format |
 | `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |
+| `lib/sfx.lua` | cue -> sound: pitch curve, beep cadence, star tally, over an injected device (pure) |
+| `lib/audio_device.lua` | the only place `love.audio` is touched: load, one-shots, loops |
+| `assets/sfx/` | the synthesised pack; `python3 tools/gen-sfx.py` rewrites it |
 | `lib/draw.lua` | flat-colour renderer, HUD, result card, level select |
 | `main.lua` | thin shell: callbacks, mode switch, camera, fixed-timestep loop |
 | `tests/` | headless suite, run with `love tests` |

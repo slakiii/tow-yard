@@ -19,6 +19,7 @@ love . --audit 4                         # can level 4 be parked? (a row number 
 love . --audit all                       # every level (~25 s each, full grid only)
 love . --edit                            # the level editor (see README)
 python3 tools/apply-level.py <id>        # splice a drafts/<id>.lua into lib/levels.lua
+python3 tools/gen-sfx.py                 # rewrite assets/sfx/ from its parameters
 timeout 4 love .                         # legacy boot smoke (exit 124 = survived)
 ```
 
@@ -70,6 +71,18 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
 - `lib/input.lua` is the only module that reads devices; it writes into
   `{ steer, throttle, brake, handbrake }` and nothing else. `steer` is a
   **target** wheel position in [-1, 1], not a rate: the ramp lives in `rig.step`.
+- **Sound is announced by the sim, played by the shell.** `session.update`
+  appends to `s.cues` and the shell drains it once per frame
+  (`session.drain`), so "did that bump make a sound, once" stays a headless
+  question. Diffing state in the shell instead is how cues double-fire
+  (`bump_flash` ticks down over 0.35 s) and how they are missed — the R
+  transition is an edge, and `revert()` zeroes the speed the bump's volume
+  needs. `lib/sfx.lua` takes an injected device (`play` / `loop` / `master`)
+  and holds every mix rule (two-slope pitch curve, beep cadence, star tally);
+  `lib/audio_device.lua` is the only place `love.audio` is touched. The pack in
+  `assets/sfx/` is generated, not sampled: `tools/gen-sfx.py` is the source and
+  loops stay WAV because vorbis padding cannot be cancelled by the decoder,
+  which turns a 0.5 s engine loop into a click at every splice.
 - `main.lua` owns the love callbacks, the camera and the fixed-timestep loop,
   and contains no rules. It also owns the **mode switch** (`menu` / `play`):
   each mode has its own update/draw/keypressed, and one dispatch block at the
