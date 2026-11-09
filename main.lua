@@ -50,6 +50,9 @@ local EDITOR_ENABLED = true
 local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool", "table",
                   "cone", "firepit", "chair", "umbrella", "gravel", "grass", "deck" }
 local SNAP = 0.5
+-- How far a click may wander, in screen pixels, before it counts as a drag:
+-- selecting a prop must never nudge it (or snap it onto the grid).
+local DRAG_SLOP = 3
 
 local game = {
     mode = MODE.menu,
@@ -221,9 +224,19 @@ local function editor_autosave(level_id, text, force)
     end
 end
 
+-- "Modified" is a fact about the document, not a flag a gesture sets: the text
+-- differs from the text this document was opened (or last saved) as. A click
+-- that only selects, a rotate with nothing selected, an undo back to where you
+-- started -- none of those are unsaved work, and none of them should ask you to
+-- save on the way out.
+local function editor_dirty()
+    local e = game.editor
+    return e ~= nil and e.baseline ~= doc.snapshot(e.doc)
+end
+
 local function editor_autosave_now()
     local e = game.editor
-    if not e or not e.dirty then return end
+    if not e or not editor_dirty() then return end
     editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc), true)
 end
 
@@ -238,7 +251,6 @@ local function editor_edit(fn)
     local e = game.editor
     undo.push(e.undo, doc.snapshot(e.doc))
     fn()
-    e.dirty = true
     editor_errors()
     editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
 end
@@ -247,8 +259,13 @@ local function open_editor(lvl)
     if not EDITOR_ENABLED then return end
     local W, H = love.graphics.getDimensions()
     local b = lvl.bounds
+    local document = doc.new(lvl)
     game.editor = {
-        doc = doc.new(lvl),
+        doc = document,
+        -- what "unmodified" means for this screen: the text it opened as. Taken
+        -- before an autosave can be restored over it, so a restored copy is
+        -- unsaved work and says so.
+        baseline = doc.snapshot(document),
         undo = undo.new(),
         cam = {
             x = (b.x0 + b.x1) / 2,
@@ -260,7 +277,6 @@ local function open_editor(lvl)
         snap = SNAP,
         palette = PALETTE,
         errors = {},
-        dirty = false,
     }
     editor_errors()
 
@@ -273,7 +289,6 @@ local function open_editor(lvl)
         if saved and not doc.same_level(saved, lvl) then
             if doc.restore(game.editor.doc, text) then
                 editor_errors()
-                game.editor.dirty = true
                 game.editor.autosave_state = { text = text }
                 local info = love.filesystem.getInfo(autosave.path(lvl.id))
                 say("restored unsaved edits from "
@@ -340,7 +355,7 @@ local function editor_save()
         return
     end
     game.custom = levelfmt.scan_custom(disk)
-    e.dirty = false
+    e.baseline = doc.snapshot(e.doc)      -- saved: this is the text now on disk
     autosave.clear(disk, e.origin_id or lvl.id)
     e.autosave_state = {}
     say("saved " .. name)
@@ -417,9 +432,10 @@ local function editor_keypressed(key)
 
     if key == "escape" then
         -- never leave silently with unsaved work: a copy is kept either way, but
-        -- "did my edit go anywhere?" is a question the editor should answer
+        -- "did my edit go anywhere?" is a question the editor should answer. A
+        -- level you only looked at has nothing to ask about.
         editor_autosave_now()
-        if e.dirty then
+        if editor_dirty() then
             e.prompt = true
         else
             open_menu()
@@ -437,7 +453,6 @@ local function editor_keypressed(key)
         if text then
             doc.restore(e.doc, text)
             editor_errors()
-            e.dirty = true
             say("undo")
         else
             say("nothing to undo")
@@ -502,8 +517,9 @@ local function editor_mousepressed(x, y, button)
         for _, h in ipairs(doc.resize_handles(e.doc)) do
             if math.abs(h.x - wx) <= grab and math.abs(h.y - wy) <= grab then
                 undo.push(e.undo, doc.snapshot(e.doc))
-                -- which corner was grabbed decides which one is pinned
-                e.resizing = { sx = h.sx, sy = h.sy }
+                -- which corner was grabbed decides which one is pinned; the
+                -- press point is kept so a click without movement does nothing
+                e.resizing = { sx = h.sx, sy = h.sy, px = x, py = y }
                 return
             end
         end
@@ -511,7 +527,9 @@ local function editor_mousepressed(x, y, button)
         local sel = doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
         local entry = sel and (sel.list == "bay" or sel.list == "spawn")
             and e.doc.level[sel.list] or (sel and (e.doc.level[sel.list] or {})[sel.index])
-        if entry then e.drag = { wx = wx, wy = wy, ox = entry.x, oy = entry.y } end
+        if entry then
+            e.drag = { px = x, py = y, wx = wx, wy = wy, ox = entry.x, oy = entry.y }
+        end
     elseif e.tool == "bay" or e.tool == "spawn" then
         -- place, then keep it selected: the next thing you want is usually a drag
         local field = (e.tool == "bay") and "bay" or "spawn"
@@ -532,12 +550,27 @@ local function editor_mousemoved(x, y, dx, dy)
     local e = game.editor
     if e.prompt then return end
 
+    -- A click is not a drag. Below a few pixels the hand has not asked for
+    -- anything, and acting on it is destructive: it snapped an off-grid prop onto
+    -- the 0.5 m grid on the way to merely selecting it, which also marked the
+    -- level modified and made Esc ask about unsaved work.
+    local function not_dragged(start)
+        return math.abs(x - (start.px or x)) < DRAG_SLOP
+            and math.abs(y - (start.py or y)) < DRAG_SLOP
+    end
+
     if e.resizing then
+        if not_dragged(e.resizing) then return end
         -- The corner opposite the grab stays put: the drag sizes the prop away
         -- from the edge you already lined up, which is how a gap gets filled.
+        local sel = e.doc.selection
+        local entry = sel and ((sel.list == "bay" or sel.list == "spawn")
+            and e.doc.level[sel.list] or (e.doc.level[sel.list] or {})[sel.index])
+        if not entry then return end
+        local w0, h0, x0, y0 = entry.w, entry.h, entry.x, entry.y
         local wx, wy = editor_to_world(x, y)
         doc.resize_to_cursor(e.doc, e.resizing, wx, wy, e.snap)
-        e.dirty = true
+        if entry.w == w0 and entry.h == h0 and entry.x == x0 and entry.y == y0 then return end
         editor_errors()
         editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
         return
@@ -549,6 +582,7 @@ local function editor_mousemoved(x, y, dx, dy)
         return
     end
     if e.drag then
+        if not_dragged(e.drag) then return end
         local wx, wy = editor_to_world(x, y)
         local sel = e.doc.selection
         local entry = sel and ((sel.list == "bay" or sel.list == "spawn")
@@ -562,7 +596,6 @@ local function editor_mousemoved(x, y, dx, dy)
                 e.drag.pushed = true
             end
             entry.x, entry.y = nx, ny
-            e.dirty = true
             editor_errors()
             editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
         end
@@ -932,6 +965,18 @@ local function smoke_step()
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
         local e = game.editor
+        local W, H = love.graphics.getDimensions()
+
+        -- Opening an untouched level is not a modification: leaving now must not
+        -- ask. Skipped only when this machine really has unsaved work for the
+        -- level, which the editor restores and rightly calls modified.
+        local had_autosave = autosave.load(disk, "straight-back") ~= nil
+        if not had_autosave then
+            assert(not editor_dirty(), "opening an untouched level marked it modified")
+        end
+        -- Autosave is throttled out for this frame: the gestures below really do
+        -- edit the document, and the smoke must not leave a recovery file behind.
+        e.autosave_state = { at = math.huge, text = "" }
 
         -- Esc with a tool armed is "put the tool down", not "leave": it falls back
         -- to `select` so the thing you just placed can be adjusted. This calls the
@@ -944,6 +989,71 @@ local function smoke_step()
         print("EDITOR ESC -> SELECT")
         game.toast = nil                      -- keep the capture unchanged
 
+        -- A click is not a drag: selecting a prop that sits off the snap grid must
+        -- leave it exactly where it is. It used to snap onto the grid on the way
+        -- to merely selecting, which also made Esc ask about unsaved work.
+        local off_grid
+        for _, c in ipairs(e.doc.level.cones) do
+            if math.abs(math.floor(c.x / SNAP + 0.5) * SNAP - c.x) > 1e-9 then
+                off_grid = c
+                break
+            end
+        end
+        assert(off_grid, "fixture: level 1 must have a prop off the snap grid")
+        local ox, oy = off_grid.x, off_grid.y
+        local px = W / 2 + (ox - e.cam.x) * e.cam.scale
+        local py = H / 2 - (oy - e.cam.y) * e.cam.scale
+        local dirty_before_click = editor_dirty()
+        editor_mousepressed(px, py, 1)
+        editor_mousemoved(px + 1, py, 0, 0)     -- a hand wobble, not a drag
+        editor_mousereleased(px + 1, py, 1)
+        assert(off_grid.x == ox and off_grid.y == oy,
+            string.format("a click nudged the prop: %.3f,%.3f -> %.3f,%.3f",
+                ox, oy, off_grid.x, off_grid.y))
+        assert(editor_dirty() == dirty_before_click, "a click marked the level modified")
+        print("EDITOR CLICK LEAVES THE DOC ALONE")
+
+        -- and a real drag still moves it: the slop must not disable dragging
+        editor_mousepressed(px, py, 1)
+        editor_mousemoved(px + 30, py, 0, 0)
+        editor_mousereleased(px + 30, py, 1)
+        assert(off_grid.x ~= ox, "a 30 px drag must still move the prop: " .. off_grid.x)
+        assert(editor_dirty(), "a real move is a modification, but nothing reported it")
+        print("EDITOR DRAG STILL MOVES")
+
+        -- A corner drag must pin the opposite corner -- through the editor's own
+        -- mouse path, with the tool on `select` as it is when a player grabs a
+        -- handle. Autosave is throttled out for this frame above.
+        local free_wall
+        for _, w in ipairs(e.doc.level.walls) do
+            if props.resize_mode(w.kind) == "free" then free_wall = w break end
+        end
+        assert(free_wall, "fixture: level 1 must have a stretchable wall")
+        doc.pick(e.doc, free_wall.x, free_wall.y, 0.4)
+        local hs = doc.resize_handles(e.doc)
+        assert(#hs == 4, "fixture: the selected wall must offer corners")
+        local grabbed, opposite = hs[4], hs[1]
+        local ax, ay = opposite.x, opposite.y
+        local sx = W / 2 + (grabbed.x - e.cam.x) * e.cam.scale
+        local sy = H / 2 - (grabbed.y - e.cam.y) * e.cam.scale
+        editor_mousepressed(sx, sy, 1)          -- grabs the handle: the real path
+        editor_mousemoved(sx + 40, sy + 25, 0, 0)
+        editor_mousereleased(sx + 40, sy + 25, 1)
+        local after = doc.resize_handles(e.doc)
+        local still
+        for _, h in ipairs(after) do
+            if h.sx == -grabbed.sx and h.sy == -grabbed.sy then still = h end
+        end
+        assert(still, "fixture: the pinned corner must still exist")
+        assert(math.abs(still.x - ax) < 1e-9 and math.abs(still.y - ay) < 1e-9,
+            string.format("a corner drag moved the opposite corner: (%.4f, %.4f) -> (%.4f, %.4f)",
+                ax, ay, still.x, still.y))
+        assert(after[4].x ~= grabbed.x or after[4].y ~= grabbed.y,
+            "the drag changed nothing, so the pin was never exercised")
+        print(string.format("EDITOR DRAG pinned (%.3f, %.3f), wall now %.2f x %.2f",
+            still.x, still.y, props.footprint(free_wall).w, props.footprint(free_wall).h))
+
+        -- the frame itself: a tool armed, the new kinds placed, a wall selected
         e.tool = "hedge"
         doc.add(e.doc, "rv", e.doc.level.spawn.x, e.doc.level.spawn.y)
         -- the two new campsite kinds, placed where the yard is empty: the frame
@@ -958,36 +1068,6 @@ local function smoke_step()
             end
         end
         editor_errors()
-
-        -- A corner drag must pin the opposite corner -- through the editor's own
-        -- mouse path, not just the document function. Autosave is throttled out
-        -- for this frame so the smoke leaves no recovery file behind.
-        local hs = doc.resize_handles(e.doc)
-        assert(#hs == 4, "fixture: the selected wall must offer corners")
-        local grabbed, opposite = hs[4], hs[1]
-        local ax, ay = opposite.x, opposite.y
-        local W, H = love.graphics.getDimensions()
-        local sx = W / 2 + (grabbed.x - e.cam.x) * e.cam.scale
-        local sy = H / 2 - (grabbed.y - e.cam.y) * e.cam.scale
-        e.autosave_state = { at = math.huge, text = "" }
-        e.resizing = { sx = grabbed.sx, sy = grabbed.sy }
-        editor_mousemoved(sx + 40, sy + 25, 0, 0)
-        e.resizing = nil
-        local after = doc.resize_handles(e.doc)
-        local still
-        for _, h in ipairs(after) do
-            if h.sx == -grabbed.sx and h.sy == -grabbed.sy then still = h end
-        end
-        assert(still, "fixture: the pinned corner must still exist")
-        assert(math.abs(still.x - ax) < 1e-9 and math.abs(still.y - ay) < 1e-9,
-            string.format("a corner drag moved the opposite corner: (%.4f, %.4f) -> (%.4f, %.4f)",
-                ax, ay, still.x, still.y))
-        assert(after[4].x ~= grabbed.x or after[4].y ~= grabbed.y,
-            "the drag changed nothing, so the pin was never exercised")
-        local sel = e.doc.selection
-        local wall = (e.doc.level[sel.list] or {})[sel.index]
-        print(string.format("EDITOR DRAG pinned (%.3f, %.3f), wall now %.2f x %.2f",
-            still.x, still.y, props.footprint(wall).w, props.footprint(wall).h))
 
         -- put the pointer over the yard so the frame shows the placement preview
         love.mouse.setPosition(math.floor(W * 0.62), math.floor(H * 0.52))
@@ -1014,11 +1094,17 @@ local function smoke_step()
     elseif smoke.frames == 24 then
         love.graphics.captureScreenshot("smoke-editor-new.png")
     elseif smoke.frames == 25 then
-        -- the question Esc asks when there is unsaved work
-        game.editor.dirty = true
+        -- the question Esc asks when there is unsaved work. The flag is derived
+        -- from the document now, so make a real edit rather than setting it.
+        local d = game.editor.doc
+        doc.add(d, "tent", d.level.spawn.x, d.level.spawn.y)
+        assert(editor_dirty(), "fixture: the added tent must read as unsaved work")
         game.editor.prompt = true
     elseif smoke.frames == 26 then
         love.graphics.captureScreenshot("smoke-editor-prompt.png")
+        -- the forced document is a fixture, not the player's work: mark it saved so
+        -- quitting the smoke does not leave a recovery file in the save directory
+        game.editor.baseline = doc.snapshot(game.editor.doc)
     elseif smoke.frames >= 27 then
         print("SMOKE OK")
         love.event.quit(0)
