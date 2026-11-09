@@ -18,6 +18,8 @@ local props = require("lib.props")
 local undo = require("lib.edit.undo")
 local autosave = require("lib.edit.autosave")
 local levelcheck = require("lib.levelcheck")
+local sfx = require("lib.sfx")
+local audio_device = require("lib.audio_device")
 
 local DT = 1 / 120          -- physics step: fixed, or the unstable reverse
 local MAX_STEPS = 12        -- never spiral past this in one frame
@@ -783,6 +785,19 @@ function love.load(args)
         end
     end
     if want_audit then return run_audit(audit_arg, quick) end
+    -- Installed before anything else can fail: a load-time error under --smoke
+    -- otherwise sits in LÖVE's interactive error screen until something kills
+    -- it, so the run reports as a timeout (124) instead of a failure with a
+    -- traceback. That has now happened twice -- the second time was this
+    -- mixer's first boot.
+    if smoke.enabled then
+        love.errorhandler = function(msg)
+            print("SMOKE ERROR: " .. tostring(msg))
+            print(debug.traceback("", 2))
+            io.stdout:flush()
+            os.exit(1)
+        end
+    end
     local want_edit = false
     for _, a in ipairs(args or {}) do
         if a == "--edit" then want_edit = true end
@@ -790,6 +805,12 @@ function love.load(args)
 
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
+    -- Built at boot, so a cue that cannot be loaded is reported once and up
+    -- front instead of the first time something is hit.
+    game.sfx_log = smoke.enabled and {} or nil
+    game.sfx_dev = audio_device.new(sfx.FILES, { log = game.sfx_log })
+    game.sfx = sfx.new(game.sfx_dev)
+    sfx.attach(game.sfx)
     input.init(game.input)
     game.codec = codec.love_data()
     game.progress = smoke.enabled and smoke_progress() or progress.open(disk)
@@ -809,12 +830,21 @@ function love.load(args)
     -- under --smoke sits there until something kills it, so the run reports as a
     -- timeout (124) rather than as a failure with a traceback. It has happened.
     if smoke.enabled then
-        love.errorhandler = function(msg)
-            print("SMOKE ERROR: " .. tostring(msg))
-            print(debug.traceback("", 2))
-            io.stdout:flush()
-            os.exit(1)
-        end
+        -- The suite cannot see assets/ (it mounts tests/ as the game root), so
+        -- "all twelve cues are actually in the directory" is checked here, by
+        -- the run that does have them. And a cue pushed through the mixer, not
+        -- just a device called directly: the wiring is the part a headless test
+        -- cannot reach.
+        assert(#game.sfx_dev.missing == 0,
+            "audio: missing " .. table.concat(game.sfx_dev.missing, ", "))
+        local want = 0
+        for _ in pairs(sfx.FILES) do want = want + 1 end
+        assert(game.sfx_dev.loaded == want,
+            string.format("audio: loaded %d of %d cues", game.sfx_dev.loaded, want))
+        sfx.cues(game.sfx, { { kind = "bump", cause = "wall", speed = 5 } })
+        local last = game.sfx_log[#game.sfx_log]
+        assert(last == "wall_thud", "a cue never reached the device, got " .. tostring(last))
+        print(string.format("SFX OK %d file(s) loaded, cue %s", game.sfx_dev.loaded, last))
     end
 end
 
@@ -859,6 +889,11 @@ local function update_play(dt)
     advance_ghost()
     if steps >= MAX_STEPS then game.acc = 0 end
 
+    -- Cues are drained once per frame, after whatever steps ran: a step list
+    -- that emits two bumps in one frame must still make two sounds, and one
+    -- that emits none must not repeat the last.
+    sfx.cues(game.sfx, session.drain(game.s))
+
     -- The result card stops the player's clock, not the ghost's: a best run that
     -- was still on the road when you beat it finishes its line instead of
     -- freezing at the moment you won. Same fixed cadence as the sim, so it drives
@@ -890,10 +925,22 @@ end
 
 local function update_menu(dt)
     local acts = input.poll_menu(game.input)
-    if acts.up then menu.move(game.menu, -1) end
-    if acts.down then menu.move(game.menu, 1) end
-    if acts.left or acts.right then menu.cycle_tab(game.menu, 1) end
-    if acts.confirm then open_selected() end
+    if acts.up then
+        menu.move(game.menu, -1)
+        sfx.one(game.sfx, "ui_tick", 0.45)
+    end
+    if acts.down then
+        menu.move(game.menu, 1)
+        sfx.one(game.sfx, "ui_tick", 0.45)
+    end
+    if acts.left or acts.right then
+        menu.cycle_tab(game.menu, 1)
+        sfx.one(game.sfx, "ui_tick", 0.45, 1.2)
+    end
+    if acts.confirm then
+        sfx.one(game.sfx, "ui_confirm", 0.55)
+        open_selected()
+    end
     if acts.cancel then love.event.quit() end
 end
 
@@ -922,6 +969,10 @@ local function smoke_step()
         print("SAVE DIR " .. love.filesystem.getSaveDirectory())
     elseif smoke.frames == 2 then
         -- full lock: the frame that has to show steered wheels and rays
+        -- frozen, or the steering ramp unwinds by however many steps this frame
+        -- happens to run: the capture lands AFTER the next update, so the pose
+        -- depended on wall-clock timing (and on how long boot took)
+        smoke.frozen = true
         game.input.steer = 0.8
         game.s.rig.steer = rig.CAR.max_steer * 0.8
         game.s.rig.ph = game.s.rig.th - math.rad(12)
@@ -932,9 +983,26 @@ local function smoke_step()
         game.s.parked = true
         game.s.t = 12.5
         game.s.final = { time = 12.5, bumps = 0, angle_err = 1.2 }
+        -- Where the card says it went: a PARKED card over an empty bay is the
+        -- smoke lying to itself, and 1.2 deg is the angle the card prints.
+        session.place_caravan(game.s, game.level.bay.x, game.level.bay.y,
+            game.level.bay.angle + math.rad(1.2))
     elseif smoke.frames == 5 then
         love.graphics.captureScreenshot("smoke-parked.png")
         game.debug = true
+        -- The cue path end to end: a real jackknife produced by the session,
+        -- out of update_play's drain, into the mixer. The PNGs prove none of
+        -- that, and the state above was forced by hand, so it cannot.
+        game.s.parked = false
+        game.s.rig.ph = game.s.rig.th + math.rad(85)
+        local before = #game.sfx_log
+        smoke.frozen = false                 -- this one needs a real step
+        update_play(0.1)
+        smoke.frozen = true
+        assert(#game.sfx_log > before, "update_play never drained a cue")
+        assert(game.sfx_log[#game.sfx_log] == "jackknife",
+            "the jackknife cue never reached the mixer: " .. tostring(game.sfx_log[#game.sfx_log]))
+        print("SFX CUE PATH OK")
     elseif smoke.frames == 6 then
         -- level 2 in the bay, facing the wrong way: the frame that has to show
         -- the required-facing arrow and the corrective ghost
@@ -1230,7 +1298,10 @@ local function menu_keypressed(key)
 
     if key == "escape" then
         love.event.quit()
+    elseif key == "m" then
+        say(sfx.toggle(game.sfx) and "sound off   (M again to restore)" or "sound on", 2)
     elseif key == "tab" or key == "left" or key == "right" then
+        sfx.one(game.sfx, "ui_tick", 0.45, 1.2)
         menu.cycle_tab(game.menu, 1)
     elseif key == "n" then
         new_level()
@@ -1240,10 +1311,13 @@ local function menu_keypressed(key)
     elseif key == "x" then
         menu_delete()
     elseif key == "up" or key == "w" then
+        sfx.one(game.sfx, "ui_tick", 0.45)
         menu.move(game.menu, -1)
     elseif key == "down" or key == "s" then
+        sfx.one(game.sfx, "ui_tick", 0.45)
         menu.move(game.menu, 1)
     elseif key == "return" or key == "kpenter" or key == "space" then
+        sfx.one(game.sfx, "ui_confirm", 0.55)
         open_selected()
     elseif key == "i" then
         import_text(love.system.getClipboardText() or "")
@@ -1274,6 +1348,8 @@ local function play_keypressed(key)
         local at_mode = 1
         for i, m in ipairs(order) do if m == game.ghost_mode then at_mode = i end end
         game.ghost_mode = order[(at_mode % #order) + 1]
+    elseif key == "m" then
+        say(sfx.toggle(game.sfx) and "sound off   (M again to restore)" or "sound on", 2)
     elseif key == "f1" then
         game.debug = not game.debug
     elseif key == "f5" then
@@ -1316,12 +1392,17 @@ end
 -- ---------------------------------------------------------------------------
 
 function love.update(dt)
-    if game.mode == MODE.editor then return end
-    if game.mode == MODE.play then
-        update_play(dt)
-    elseif game.mode == MODE.menu then
-        update_menu(dt)
+    if game.mode ~= MODE.editor then
+        if game.mode == MODE.play then
+            update_play(dt)
+        else
+            update_menu(dt)
+        end
     end
+    -- One mixer tick per frame, for every screen. The loops are silenced by
+    -- volume rather than stopped, so changing mode cannot leave the engine
+    -- running in the menu and cannot click when it comes back.
+    sfx.update(game.sfx, game.s, game.mode == MODE.play and not game.paused, dt)
 end
 
 function love.draw()

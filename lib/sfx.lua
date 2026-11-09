@@ -90,6 +90,11 @@ function M.toggle(self)
     return self.mute
 end
 
+-- A single cue for a caller with no session event: a menu key, a toast.
+function M.one(self, name, volume, pitch)
+    play(self, name, volume or 0.5, pitch or 1)
+end
+
 -- Physics events -> sounds. Volume follows the cue's own numbers: an impact is
 -- as loud as the speed it happened at, which is why revert() captures it.
 function M.cues(self, list)
