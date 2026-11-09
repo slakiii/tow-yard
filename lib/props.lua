@@ -39,6 +39,8 @@ M.KINDS = {
               colour = { 0.20, 0.30, 0.19 }, label = "hedge" },
     pool = { class = "solid", shape = "box", w = 8.0, h = 5.0,
              colour = { 0.18, 0.30, 0.36 }, label = "pool" },
+    table = { class = "solid", shape = "box", w = 2.4, h = 1.8,
+              colour = { 0.44, 0.33, 0.28 }, label = "picnic table" },
 
     -- Extend the cone list (knocked once, charged one bump).
     cone = { class = "knockable", shape = "circle", r = 0.35,
@@ -47,6 +49,11 @@ M.KINDS = {
                 colour = { 0.96, 0.42, 0.10 }, label = "fire pit", loud = true },
     chair = { class = "knockable", shape = "circle", r = 0.50,
               colour = { 0.40, 0.36, 0.38 }, label = "camp chair" },
+    -- A beach umbrella is a pole and a canopy: the pole would let a rig drive
+    -- through it if this were scenery, so it takes the knockable contact path and
+    -- the whole 2.2 m canopy is the circle it is hit by.
+    umbrella = { class = "knockable", shape = "circle", r = 1.10,
+                 colour = { 0.34, 0.46, 0.50 }, label = "beach umbrella" },
 }
 
 -- Ground paint only: no collision, drawn under everything. Kinds are named here
@@ -81,6 +88,8 @@ local RESIZE = {
     chair = "none",
     cone = "none",
     firepit = "none",
+    table = "none",
+    umbrella = "none",
 }
 
 function M.resize_mode(kind)

@@ -19,6 +19,7 @@ local M = { order = {
     "check_rejects_a_bad_size",
     "check_rejects_an_unknown_surface_kind",
     "every_kind_has_a_renderer",
+    "the_campsite_furniture_has_the_right_contact_path",
 } }
 
 local function level_with(walls, cones, surfaces)
@@ -209,6 +210,23 @@ function M.every_kind_has_a_renderer()
         H.expect(draw.ART[kind] ~= nil, "no art for kind " .. kind)
     end
     H.expect(seen >= 8, "the vocabulary shrank: only " .. seen .. " kinds")
+end
+
+function M.the_campsite_furniture_has_the_right_contact_path()
+    -- A picnic table is something that stops you; a beach umbrella is something
+    -- you knock over. Both have one real size, so neither grows resize handles:
+    -- stretching a table is distorting, not authoring.
+    local table_def = props.get("table")
+    H.expect(table_def ~= nil, "there must be a table kind")
+    H.expect(table_def.class == "solid", "a table stops the rig (the wall path)")
+    H.expect(props.resize_mode("table") == "none", "a table has one size")
+
+    local umbrella = props.get("umbrella")
+    H.expect(umbrella ~= nil, "there must be an umbrella kind")
+    H.expect(umbrella.class == "knockable", "an umbrella is knocked over (the cone path)")
+    H.expect(umbrella.shape == "circle" and umbrella.r >= 1.0,
+        "the canopy, not the pole, is the circle the rig is hit by: " .. tostring(umbrella.r))
+    H.expect(props.resize_mode("umbrella") == "none", "an umbrella has one size")
 end
 
 return M

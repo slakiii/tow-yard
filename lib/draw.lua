@@ -221,6 +221,19 @@ ART.pool = function(x, y, ang, fp, a)
     end
 end
 
+ART.table = function(x, y, ang, fp, a)
+    -- A picnic table from above: two benches on the long sides, the top between
+    -- them. The footprint includes the benches, so the whole picture is what you
+    -- hit -- a top-sized box would leave benches you can drive through.
+    local bh = fp.h * 0.20
+    local by = fp.h / 2 - bh / 2
+    box_fill(x, y, ang, 0, 0, fp.w, fp.h, shade(fp.colour, 0.55), a)
+    box_fill(x, y, ang, 0, by, fp.w, bh, shade(fp.colour, 1.20), a)
+    box_fill(x, y, ang, 0, -by, fp.w, bh, shade(fp.colour, 1.20), a)
+    box_fill(x, y, ang, 0, 0, fp.w * 0.88, fp.h * 0.42, fp.colour, a)
+    ridge(x, y, ang, -fp.w * 0.44, fp.w * 0.44, shade(fp.colour, 0.72), 0.8 * a)
+end
+
 ART.cone = function(x, y, ang, fp, a)
     set(fp.colour, a)
     love.graphics.circle("fill", x, y, fp.r)
@@ -254,6 +267,26 @@ ART.chair = function(x, y, ang, fp, a)
     love.graphics.circle("fill", x, y, fp.r)
     box_fill(x, y, ang, 0, 0, fp.r * 1.15, fp.r * 1.15, fp.colour, a)
     box_fill(x, y, ang, -fp.r * 0.62, 0, fp.r * 0.3, fp.r * 1.2, shade(fp.colour, 1.35), a)
+end
+
+ART.umbrella = function(x, y, ang, fp, a)
+    -- Eight alternating panels. A flat disc this size reads as a patch of dead
+    -- grass; only the alternating panels say "canopy" at 15 px/m. The canopy is
+    -- rotationally symmetric, so `ang` changes nothing and is not applied.
+    for i = 0, 7 do
+        local a1 = (i / 8) * math.pi * 2
+        set(shade(fp.colour, (i % 2 == 0) and 1.22 or 0.80), a)
+        love.graphics.arc("fill", "pie", x, y, fp.r, a1, a1 + math.pi / 4, 8)
+    end
+    set(shade(fp.colour, 0.55), a)
+    love.graphics.setLineWidth(0.08)
+    love.graphics.circle("line", x, y, fp.r)
+    -- the pole at the centre, and the ring the canopy ribs meet
+    set({ 0.62, 0.58, 0.52 }, a)
+    love.graphics.circle("fill", x, y, math.max(0.10, fp.r * 0.10))
+    set(shade(fp.colour, 0.45), a)
+    love.graphics.circle("line", x, y, fp.r * 0.42)
+    love.graphics.setLineWidth(1)
 end
 
 function D.prop(x, y, ang, fp, alpha)

@@ -77,8 +77,8 @@ editor, so its editor frames need removing in that build).
 
 Only structural things stretch: buildings, tents, pools, decking, gravel, grass,
 water, the bay, and hedges (length only). A car, a motorhome, a chair, a cone, a
-fire pit and the spawn have one real size and offer no handles -- stretching them
-is not authoring, it is distorting.
+fire pit, a picnic table, a beach umbrella and the spawn have one real size and
+offer no handles -- stretching them is not authoring, it is distorting.
 
 | Mouse | |
 |---|---|

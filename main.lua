@@ -47,8 +47,8 @@ local EDITOR_ENABLED = true
 
 -- Everything the editor can place. "select" is a tool, not a kind: the palette
 -- is one list so the player's eye does not have to sort it into two.
-local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool",
-                  "cone", "firepit", "chair", "gravel", "grass", "deck" }
+local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool", "table",
+                  "cone", "firepit", "chair", "umbrella", "gravel", "grass", "deck" }
 local SNAP = 0.5
 
 local game = {
@@ -940,14 +940,18 @@ local function smoke_step()
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
         game.editor.tool = "hedge"
-        -- a wall that CAN be stretched, so the frame shows its handles
+        doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
+        -- the two new campsite kinds, placed where the yard is empty: the frame
+        -- has to show their art, not just their footprint
+        doc.add(game.editor.doc, "umbrella", 52, 33)
+        doc.add(game.editor.doc, "table", 52, 7)
+        -- a wall that CAN be stretched, selected last so the frame shows handles
         for _, w in ipairs(game.editor.doc.level.walls) do
             if props.resize_mode(w.kind) == "free" then
                 doc.pick(game.editor.doc, w.x, w.y, 0.4)
                 break
             end
         end
-        doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
         editor_errors()
         -- put the pointer over the yard so the frame shows the placement preview
         local W, H = love.graphics.getDimensions()
