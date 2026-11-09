@@ -604,7 +604,7 @@ function D.hud(s, game)
     local pad = game.input and game.input.last_device == "gamepad"
     local hint = pad
         and "LS/D-pad steer   RT forward   LT brake/reverse   A handbrake   Y guide   B reset   Start pause"
-        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   Esc menu"
+        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   M sound   Esc menu"
     set(D.C.dim, 0.9)
     love.graphics.print(hint, 24, H - 26)
 
@@ -761,6 +761,15 @@ function D.menu(model, game)
     set(D.C.dim, 0.9)
     local pad = game and game.input and game.input.last_device == "gamepad"
     local hint
+    if game and game.toast and game.toast.expires and love.timer.getTime() < game.toast.expires then
+        -- The level select uses `say` too (deleting a custom level reports
+        -- itself that way), and a channel the visible screen does not draw is a
+        -- message nobody reads.
+        set(D.C.text, 0.92)
+        local t = game.toast.text
+        love.graphics.print(t, W / 2 - fonts.small:getWidth(t) / 2, 26)
+        set(D.C.dim, 0.9)
+    end
     if game and game.confirm_delete then
         set(D.C.warn, 0.95)
         hint = "delete " .. tostring(game.confirm_delete.name) .. "?    Enter confirms    Esc cancels"
@@ -770,9 +779,9 @@ function D.menu(model, game)
     if pad then
         hint = "D-pad choose    A open    LB/RB tab    B quit"
     elseif model.tab == "custom" then
-        hint = "W/S choose    Enter open    Tab switch tab    X delete    I paste a code    Esc quit"
+        hint = "W/S choose    Enter open    Tab switch tab    X delete    I paste a code    M sound    Esc quit"
     else
-        hint = "W/S choose    Enter open    Tab switch tab    Esc quit"
+        hint = "W/S choose    Enter open    Tab switch tab    M sound    Esc quit"
     end
     love.graphics.print(hint, x, H - 30)
 end
