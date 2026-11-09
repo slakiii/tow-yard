@@ -782,6 +782,15 @@ local function update_play(dt)
     advance_ghost()
     if steps >= MAX_STEPS then game.acc = 0 end
 
+    -- The result card stops the player's clock, not the ghost's: a best run that
+    -- was still on the road when you beat it finishes its line instead of
+    -- freezing at the moment you won. Same fixed cadence as the sim, so it drives
+    -- rather than teleports.
+    if game.s.parked and game.ghost then
+        local _, left = run.follow(game.ghost, game.acc, DT, MAX_STEPS)
+        game.acc = left
+    end
+
     -- The park is the event that writes progress. record() gets the session the
     -- game produced (all of its numbers are the sim's own), and the store writes
     -- once, on the transition, not every frame the card is on screen.
@@ -895,6 +904,38 @@ local function smoke_step()
     elseif smoke.frames == 14 then
         love.graphics.captureScreenshot("smoke-ghost.png")
     elseif smoke.frames == 15 then
+        -- The player parks mid-run (a new best): the ghost still has its own line
+        -- to drive. Step the shell at a fixed dt -- exactly what a real frame
+        -- does -- and require the ghost to have moved.
+        local gh = game.ghost
+        game.paused = false
+        game.s.parked = true
+        game.s.t = 30
+        game.s.final = { time = 30, bumps = 0, angle_err = 0.4 }
+        game.steps = 30
+        gh.step, gh.s = 0, session.new(game.level)
+        run.advance(gh, 30)
+        assert(not gh.s.parked, "fixture: the ghost must not have parked yet")
+        smoke.frozen = false
+        update_play(0.1)
+        smoke.frozen = true
+        assert(gh.step > 30,
+            string.format("the ghost stopped when the player parked (%d/%d)", gh.step, #gh.run.frames))
+    elseif smoke.frames == 16 then
+        love.graphics.captureScreenshot("smoke-ghost-after-park.png")
+        -- and it keeps driving until its own run ends, not just one frame
+        smoke.frozen = false
+        for _ = 1, 10000 do
+            update_play(0.1)
+            if game.ghost.s.parked then break end
+        end
+        smoke.frozen = true
+        assert(game.ghost.s.parked, "the ghost never finished its run after the park")
+        assert(game.ghost.step == #game.ghost.run.frames,
+            string.format("the ghost left frames undriven: %d/%d",
+                game.ghost.step, #game.ghost.run.frames))
+        print("GHOST FINISHED AFTER PARK")
+    elseif smoke.frames == 17 then
         -- the editor on a shipped level, with a prop selected and an error
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
@@ -911,35 +952,35 @@ local function smoke_step()
         -- put the pointer over the yard so the frame shows the placement preview
         local W, H = love.graphics.getDimensions()
         love.mouse.setPosition(math.floor(W * 0.62), math.floor(H * 0.52))
-    elseif smoke.frames == 16 then
+    elseif smoke.frames == 18 then
         love.graphics.captureScreenshot("smoke-editor.png")
-    elseif smoke.frames == 17 then
+    elseif smoke.frames == 19 then
         -- the custom tab, empty: the state a player meets before importing
         open_menu()
         menu.switch_tab(game.menu, "custom")
-    elseif smoke.frames == 18 then
+    elseif smoke.frames == 20 then
         love.graphics.captureScreenshot("smoke-menu-custom-empty.png")
-    elseif smoke.frames == 19 then
+    elseif smoke.frames == 21 then
         -- and with one imported level in it
         game.custom = { doc.level(doc.blank("my-level", "My level")) }
         menu.rebuild(game.menu, levels.ALL, game.custom)
         menu.switch_tab(game.menu, "custom")
-    elseif smoke.frames == 20 then
+    elseif smoke.frames == 22 then
         love.graphics.captureScreenshot("smoke-menu-custom.png")
-    elseif smoke.frames == 21 then
+    elseif smoke.frames == 23 then
         -- a new level: the blank site a player meets on "N", with the bay
         -- selected so the frame shows what selecting the goal looks like
         new_level()
         doc.select(game.editor.doc, "bay")
-    elseif smoke.frames == 22 then
+    elseif smoke.frames == 24 then
         love.graphics.captureScreenshot("smoke-editor-new.png")
-    elseif smoke.frames == 23 then
+    elseif smoke.frames == 25 then
         -- the question Esc asks when there is unsaved work
         game.editor.dirty = true
         game.editor.prompt = true
-    elseif smoke.frames == 24 then
+    elseif smoke.frames == 26 then
         love.graphics.captureScreenshot("smoke-editor-prompt.png")
-    elseif smoke.frames >= 25 then
+    elseif smoke.frames >= 27 then
         print("SMOKE OK")
         love.event.quit(0)
     end

@@ -30,6 +30,8 @@ local M = { order = {
     "verify_refuses_other_geometry_and_other_builds",
     "verify_refuses_a_run_that_does_not_park",
     "verify_ignores_the_claimed_time",
+    "a_ghost_keeps_driving_after_the_player_parks",
+    "follow_steps_at_the_fixed_cadence",
 } }
 
 local DT = 1 / 120
@@ -360,6 +362,47 @@ function M.the_ghost_waits_for_the_player()
     -- a paused game does not call advance at all, so the ghost cannot run ahead;
     -- and neither can it if the player's count goes backwards
     H.expect(run.advance(ghost, 3) == 0, "never backwards")
+end
+
+function M.a_ghost_keeps_driving_after_the_player_parks()
+    -- The regression: the player's step count stops at the park, so a ghost that
+    -- only followed that count froze mid-line at the exact moment the result card
+    -- said "new best". A ghost that quits when you beat it is not a rival.
+    local lvl, _, r = drive_level_1()
+    H.expect(#r.frames > 60, "fixture: the drive is long enough to be cut short")
+
+    local ghost = { run = r, s = session.new(lvl), step = 0 }
+    run.advance(ghost, 30)
+    H.expect(ghost.step == 30, "fixture: the ghost is 30 steps in: " .. ghost.step)
+    H.expect(not ghost.s.parked, "fixture: and it has not parked yet")
+
+    -- the player's clock is stopped at the park, so the shell feeds the ghost
+    -- frame time instead; it must drive to the end of its own line
+    local guard = 0
+    while run.follow(ghost, 0.1, DT, 12) > 0 and guard < 100000 do guard = guard + 1 end
+    H.expect(ghost.step == #r.frames,
+        "the ghost consumed its whole run: " .. ghost.step .. "/" .. #r.frames)
+    H.expect(ghost.s.parked, "and reached its own park")
+end
+
+function M.follow_steps_at_the_fixed_cadence()
+    local lvl, _, r = drive_level_1()
+    local ghost = { run = r, s = session.new(lvl), step = 0 }
+
+    -- six frame-times of stall is six frames: after the park the ghost keeps
+    -- driving in real time instead of teleporting to the end of its run
+    local moved, left = run.follow(ghost, 6 * DT, DT, 12)
+    H.expect(moved == 6, "six steps of time, six frames: " .. moved)
+    H.expect(ghost.step == 6, "and the ghost is six frames in: " .. ghost.step)
+    H.expect(math.abs(left) < 1e-12, "leaving no accumulated time: " .. tostring(left))
+
+    -- the same per-frame cap as the player's loop: a long stall cannot spiral
+    H.expect(run.follow(ghost, 5.0, DT, 12) == 12, "a long stall is capped like the sim")
+
+    -- a spent ghost or no ghost at all moves nothing, and does not crash
+    local spent = { run = { frames = {} }, s = session.new(lvl), step = 0 }
+    H.expect(run.follow(spent, 6 * DT, DT, 12) == 0, "a spent run has nothing to drive")
+    H.expect(run.follow(nil, 6 * DT, DT, 12) == 0, "and no ghost is not a crash")
 end
 
 return M

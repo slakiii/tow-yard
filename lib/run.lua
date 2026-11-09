@@ -111,9 +111,17 @@ function M.replay(level, run)
     return s
 end
 
--- The same drive, sampled, for drawing a ghost trail: computing the whole line
--- up front costs one replay (milliseconds) and lets the trail be revealed as the
--- player advances instead of storing a pose per frame twice.
+-- One frame of the ghost's own drive. False when there is nothing left to
+-- drive: the run is spent, or the replay itself has parked.
+function M.step(ghost)
+    if not ghost or ghost.s.parked then return false end
+    local f = ghost.run.frames[ghost.step + 1]
+    if not f then return false end
+    ghost.step = ghost.step + 1
+    session.update(ghost.s, f, rig.STEP)
+    return true
+end
+
 -- Advance a ghost to the player's own step count.
 --
 -- Never with wall-clock time: pausing must not let it drive off, and it must not
@@ -122,15 +130,32 @@ end
 function M.advance(ghost, steps)
     local moved = 0
     while ghost.step < (steps or 0) do
-        local f = ghost.run.frames[ghost.step + 1]
-        if not f or ghost.s.parked then break end
-        ghost.step = ghost.step + 1
-        session.update(ghost.s, f, rig.STEP)
+        if not M.step(ghost) then break end
         moved = moved + 1
     end
     return moved
 end
 
+-- The player's clock stops at the park; the ghost's does not.
+--
+-- A best run that was still on the road when you beat it has frames left. Cut
+-- off at the player's step count it froze mid-line at the moment of victory,
+-- which reads as the ghost quitting rather than losing. Feed it the frame time
+-- the player's loop no longer consumes, on the same fixed cadence, until its own
+-- line ends. Returns frames driven and the time left unconsumed.
+function M.follow(ghost, acc, dt, max_steps)
+    local moved, left = 0, acc or 0
+    while left >= dt and moved < (max_steps or 12) do
+        if not M.step(ghost) then break end
+        left = left - dt
+        moved = moved + 1
+    end
+    return moved, left
+end
+
+-- The same drive, sampled, for drawing a ghost trail: computing the whole line
+-- up front costs one replay (milliseconds) and lets the trail be revealed as the
+-- player advances instead of storing a pose per frame twice.
 function M.trace(level, run, every)
     every = every or 6
     local s = session.new(level)
