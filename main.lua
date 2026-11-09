@@ -488,7 +488,8 @@ local function editor_mousepressed(x, y, button)
         for _, h in ipairs(doc.resize_handles(e.doc)) do
             if math.abs(h.x - wx) <= grab and math.abs(h.y - wy) <= grab then
                 undo.push(e.undo, doc.snapshot(e.doc))
-                e.resizing = { axis = h.axis }
+                -- which corner was grabbed decides which one is pinned
+                e.resizing = { sx = h.sx, sy = h.sy }
                 return
             end
         end
@@ -513,38 +514,15 @@ local function editor_mousepressed(x, y, button)
     end
 end
 
-local function editor_selection_entry()
-    local e = game.editor
-    local sel = e.doc.selection
-    if not sel then return nil end
-    if sel.list == "bay" or sel.list == "spawn" then return e.doc.level[sel.list] end
-    return (e.doc.level[sel.list] or {})[sel.index]
-end
-
 local function editor_mousemoved(x, y, dx, dy)
     local e = game.editor
     if e.prompt then return end
 
     if e.resizing then
-        local entry = editor_selection_entry()
-        if not entry then return end
+        -- The corner opposite the grab stays put: the drag sizes the prop away
+        -- from the edge you already lined up, which is how a gap gets filled.
         local wx, wy = editor_to_world(x, y)
-        local c, sn = math.cos(entry.angle or 0), math.sin(entry.angle or 0)
-        local px, py = wx - entry.x, wy - entry.y
-        local lx, ly = px * c + py * sn, -px * sn + py * c
-
-        local fp = props.footprint(entry) or { w = entry.w or 1, h = entry.h or 1 }
-        local axis = e.resizing.axis
-        local w = (axis == "y") and fp.w or math.abs(lx) * 2
-        local h = (axis == "x") and fp.h or math.abs(ly) * 2
-        -- snap the SIZE, not the cursor: on a 0.5 m grid a drag should produce
-        -- 0.5 m sizes, or every hedge ends up 6.37 m long
-        if e.snap and e.snap > 0 then
-            w = math.max(e.snap, math.floor(w / e.snap + 0.5) * e.snap)
-            h = math.max(e.snap, math.floor(h / e.snap + 0.5) * e.snap)
-        end
-
-        doc.resize_to(e.doc, w, h)
+        doc.resize_to_cursor(e.doc, e.resizing, wx, wy, e.snap)
         e.dirty = true
         editor_errors()
         editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc))
@@ -939,22 +917,53 @@ local function smoke_step()
         -- the editor on a shipped level, with a prop selected and an error
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
-        game.editor.tool = "hedge"
-        doc.add(game.editor.doc, "rv", game.editor.doc.level.spawn.x, game.editor.doc.level.spawn.y)
+        local e = game.editor
+        e.tool = "hedge"
+        doc.add(e.doc, "rv", e.doc.level.spawn.x, e.doc.level.spawn.y)
         -- the two new campsite kinds, placed where the yard is empty: the frame
         -- has to show their art, not just their footprint
-        doc.add(game.editor.doc, "umbrella", 52, 33)
-        doc.add(game.editor.doc, "table", 52, 7)
+        doc.add(e.doc, "umbrella", 52, 33)
+        doc.add(e.doc, "table", 52, 7)
         -- a wall that CAN be stretched, selected last so the frame shows handles
-        for _, w in ipairs(game.editor.doc.level.walls) do
+        for _, w in ipairs(e.doc.level.walls) do
             if props.resize_mode(w.kind) == "free" then
-                doc.pick(game.editor.doc, w.x, w.y, 0.4)
+                doc.pick(e.doc, w.x, w.y, 0.4)
                 break
             end
         end
         editor_errors()
-        -- put the pointer over the yard so the frame shows the placement preview
+
+        -- A corner drag must pin the opposite corner -- through the editor's own
+        -- mouse path, not just the document function. Autosave is throttled out
+        -- for this frame so the smoke leaves no recovery file behind.
+        local hs = doc.resize_handles(e.doc)
+        assert(#hs == 4, "fixture: the selected wall must offer corners")
+        local grabbed, opposite = hs[4], hs[1]
+        local ax, ay = opposite.x, opposite.y
         local W, H = love.graphics.getDimensions()
+        local sx = W / 2 + (grabbed.x - e.cam.x) * e.cam.scale
+        local sy = H / 2 - (grabbed.y - e.cam.y) * e.cam.scale
+        e.autosave_state = { at = math.huge, text = "" }
+        e.resizing = { sx = grabbed.sx, sy = grabbed.sy }
+        editor_mousemoved(sx + 40, sy + 25, 0, 0)
+        e.resizing = nil
+        local after = doc.resize_handles(e.doc)
+        local still
+        for _, h in ipairs(after) do
+            if h.sx == -grabbed.sx and h.sy == -grabbed.sy then still = h end
+        end
+        assert(still, "fixture: the pinned corner must still exist")
+        assert(math.abs(still.x - ax) < 1e-9 and math.abs(still.y - ay) < 1e-9,
+            string.format("a corner drag moved the opposite corner: (%.4f, %.4f) -> (%.4f, %.4f)",
+                ax, ay, still.x, still.y))
+        assert(after[4].x ~= grabbed.x or after[4].y ~= grabbed.y,
+            "the drag changed nothing, so the pin was never exercised")
+        local sel = e.doc.selection
+        local wall = (e.doc.level[sel.list] or {})[sel.index]
+        print(string.format("EDITOR DRAG pinned (%.3f, %.3f), wall now %.2f x %.2f",
+            still.x, still.y, props.footprint(wall).w, props.footprint(wall).h))
+
+        -- put the pointer over the yard so the frame shows the placement preview
         love.mouse.setPosition(math.floor(W * 0.62), math.floor(H * 0.52))
     elseif smoke.frames == 18 then
         love.graphics.captureScreenshot("smoke-editor.png")

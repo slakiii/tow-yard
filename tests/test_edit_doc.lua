@@ -19,6 +19,7 @@ local M = { order = {
     "things_with_one_size_refuse_to_stretch",
     "a_handle_drag_sets_an_absolute_size",
     "handles_appear_only_where_stretching_means_something",
+    "a_corner_drag_pins_the_opposite_corner",
     "remove_deletes_and_clears_the_selection",
     "bay_and_spawn_can_be_set",
     "a_document_survives_a_snapshot",
@@ -366,6 +367,101 @@ function M.handles_appear_only_where_stretching_means_something()
     for _, h in ipairs(hs) do minx = math.min(minx, h.x); maxx = math.max(maxx, h.x) end
     H.expect(math.abs((maxx - minx) - props.footprint(rot).h) < 1e-9,
         "a tent turned 90 degrees is as wide as it is deep now")
+end
+
+function M.a_corner_drag_pins_the_opposite_corner()
+    -- The reason this exists: filling a gap. The far edge is the edge you
+    -- already lined up, so grabbing a corner must grow the prop away from it, not
+    -- around the centre (which moves both edges and re-opens the gap).
+    local d = doc.blank("test-anchor")
+
+    -- a free kind: grab the +x/+y corner, drag the box to 9 x 7
+    local tent = doc.add(d, "tent", 30, 20)
+    local corners = doc.resize_handles(d)
+    H.expect(#corners == 4, "fixture: four corners")
+    local grab = corners[4]
+    H.expect(grab.sx == 1 and grab.sy == 1, "fixture: the last corner is +x/+y")
+
+    -- the anchor is the opposite corner of the 3.4 x 3.0 default
+    local ax, ay = 30 - 1.7, 20 - 1.5
+    H.expect(doc.resize_to_cursor(d, grab, ax + 9, ay + 7, 0.5) ~= nil, "the drag applies")
+    H.expect(math.abs(props.footprint(tent).w - 9) < 1e-9, "width follows the cursor: " .. props.footprint(tent).w)
+    H.expect(math.abs(props.footprint(tent).h - 7) < 1e-9, "height follows the cursor: " .. props.footprint(tent).h)
+    H.expect(math.abs(tent.x - (ax + 4.5)) < 1e-9 and math.abs(tent.y - (ay + 3.5)) < 1e-9,
+        string.format("the centre moved with the new size, not the anchor (%.3f, %.3f)", tent.x, tent.y))
+
+    -- the anchor itself: the corner opposite the grab has not moved a millimetre
+    local after = doc.resize_handles(d)
+    local pinned
+    for _, h in ipairs(after) do
+        if h.sx == -1 and h.sy == -1 then pinned = h end
+    end
+    H.expect(pinned and math.abs(pinned.x - ax) < 1e-9 and math.abs(pinned.y - ay) < 1e-9,
+        string.format("the opposite corner drifted to (%.3f, %.3f), expected (%.3f, %.3f)",
+            pinned and pinned.x or -1, pinned and pinned.y or -1, ax, ay))
+
+    -- length only: the short side is untouched, and the grabbed end is the one
+    -- that moves -- pulling a hedge wider still makes a field
+    local hedge = doc.add(d, "hedge", 10, 10)      -- 6 x 0.7
+    local ends = doc.resize_handles(d)
+    H.expect(#ends == 2 and ends[2].sx == 1 and ends[2].sy == 0, "fixture: the right end is +x")
+    doc.resize_to_cursor(d, ends[2], 15, 10, 0.5)
+    H.expect(math.abs(props.footprint(hedge).w - 8) < 1e-9, "the length follows: " .. props.footprint(hedge).w)
+    H.expect(math.abs(props.footprint(hedge).h - 0.7) < 1e-9,
+        "the thickness is the kind's own and is never snapped: " .. props.footprint(hedge).h)
+    H.expect(math.abs(hedge.x - 11) < 1e-9, "the centre moved half of what the end gained: " .. hedge.x)
+
+    -- a rotated prop: pinning is in the prop's own frame, so the anchor is a
+    -- world point and stays one
+    local rot = doc.add(d, "building", 40, 20)     -- 7 x 5
+    rot.angle = math.pi / 2
+    local hs = doc.resize_handles(d)
+    local cnr
+    for _, h in ipairs(hs) do
+        if h.sx == -1 and h.sy == 1 then cnr = h end
+    end
+    H.expect(cnr ~= nil, "fixture: a rotated prop still has four signed corners")
+    -- the anchor is the (+1, -1) corner, which for a 90 degree turn is up-left
+    local anc = nil
+    for _, h in ipairs(hs) do
+        if h.sx == 1 and h.sy == -1 then anc = h end
+    end
+    local wx = cnr.x + 2      -- any cursor; the anchor must survive it
+    local wy = cnr.y - 1
+    doc.resize_to_cursor(d, cnr, wx, wy, 0)
+    hs = doc.resize_handles(d)
+    local still = nil
+    for _, h in ipairs(hs) do
+        if h.sx == 1 and h.sy == -1 then still = h end
+    end
+    H.expect(still and math.abs(still.x - anc.x) < 1e-9 and math.abs(still.y - anc.y) < 1e-9,
+        string.format("a rotated prop's pinned corner drifted: (%.3f, %.3f) vs (%.3f, %.3f)",
+            still and still.x or -1, still and still.y or -1, anc.x, anc.y))
+
+    -- the same rule for the bay, which is chosen by name
+    doc.select(d, "bay")
+    local bay_hs = doc.resize_handles(d)
+    H.expect(#bay_hs == 4, "fixture: the bay has corners")
+    local b = d.level.bay
+    local bax, bay_ = b.x - b.w / 2, b.y - b.h / 2
+    doc.resize_to_cursor(d, bay_hs[4], bax + 12, bay_ + 6, 0.5)
+    H.expect(math.abs(b.w - 12) < 1e-9 and math.abs(b.h - 6) < 1e-9, "the bay resizes too")
+    H.expect(math.abs((b.x - b.w / 2) - bax) < 1e-9 and math.abs((b.y - b.h / 2) - bay_) < 1e-9,
+        "and its far corner is pinned")
+
+    -- a drag past the anchor clamps at the minimum size, still without moving it
+    doc.select(d, "bay")
+    bax, bay_ = b.x - b.w / 2, b.y - b.h / 2
+    doc.resize_to_cursor(d, doc.resize_handles(d)[4], bax - 50, bay_ - 50, 0.5)
+    H.expect(b.w >= 0.2 and b.h >= 0.2, "a drag past the anchor clamps: " .. b.w .. " x " .. b.h)
+    H.expect(math.abs((b.x - b.w / 2) - bax) < 1e-9 and math.abs((b.y - b.h / 2) - bay_) < 1e-9,
+        "and the anchor still has not moved")
+
+    -- nothing selected, or a kind with one size: no drag, no crash
+    d.selection = nil
+    H.expect(doc.resize_to_cursor(d, { sx = 1, sy = 1 }, 0, 0, 0.5) == nil, "nothing selected")
+    doc.add(d, "car", 5, 5)
+    H.expect(doc.resize_to_cursor(d, { sx = 1, sy = 1 }, 0, 0, 0.5) == nil, "a car has one size")
 end
 
 return M

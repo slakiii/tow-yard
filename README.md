@@ -93,7 +93,7 @@ offer no handles -- stretching them is not authoring, it is distorting.
 |---|---|
 | `[` `]` | cycle the tool palette (`bay` and `spawn` place the goal and the start) |
 | `Q` `E` | rotate the selection 15 deg |
-| drag a handle | resize (corner handles both ways, a hedge only along its length) |
+| drag a handle | resize; the corner opposite the one you grabbed stays put (corners both ways, a hedge only along its length) |
 | `Del` | remove |
 | `Ctrl+Z` | undo (32 deep) |
 | `G` | snapping on/off (0.5 m, or free placement) |

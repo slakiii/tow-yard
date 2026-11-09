@@ -245,52 +245,110 @@ function M.resize_mode(doc)
     return props.resize_mode(entry and entry.kind)
 end
 
+-- The box a resize handle sits on: the entry, its authored size with the kind's
+-- defaults filled in, and its heading. nil when the selection cannot be
+-- stretched -- the one place that decision is made for handles and drags both.
+local function box_of(doc)
+    local entry, s = selected(doc)
+    if not entry then return nil end
+    local mode = M.resize_mode(doc)
+    if mode == "none" then return nil end
+
+    local w, h
+    if s.list == "bay" then
+        w, h = entry.w, entry.h
+    elseif s.list == "surfaces" or s.list == "walls" then
+        local fp = props.footprint(entry) or { w = entry.w, h = entry.h }
+        w, h = fp.w, fp.h
+    else
+        return nil
+    end
+    return { entry = entry, mode = mode, w = w, h = h, angle = entry.angle or 0 }
+end
+
 -- Where the resize handles are, in world coordinates. The view draws squares at
 -- these points and the mouse hit-tests them; keeping the geometry here means the
 -- one thing that can be wrong (which end is the length) is a test.
 --
+-- Each handle carries the signs of the corner it sits on in the prop's own
+-- frame (`sx`, `sy`, 0 where that axis does not move), because a drag has to
+-- know which corner it grabbed to pin the other one.
+--
 -- Returns {} when there is nothing storable to drag: no selection, or a kind with
 -- one size -- a car must not grow handles.
 function M.resize_handles(doc)
-    local entry, s = selected(doc)
-    if not entry then return {} end
-    local mode = M.resize_mode(doc)
-    if mode == "none" then return {} end
+    local box = box_of(doc)
+    if not box then return {} end
 
-    local x, y, w, h, angle = entry.x, entry.y, nil, nil, 0
-    if s.list == "bay" then
-        w, h, angle = entry.w, entry.h, entry.angle or 0
-    elseif s.list == "surfaces" or s.list == "walls" then
-        local fp = props.footprint(entry) or { w = entry.w, h = entry.h }
-        w, h, angle = fp.w, fp.h, entry.angle or 0
-    else
-        return {}
-    end
-
-    local c, sn = math.cos(angle), math.sin(angle)
-    local hw, hh = w / 2, h / 2
+    local c, sn = math.cos(box.angle), math.sin(box.angle)
+    local hw, hh = box.w / 2, box.h / 2
     local function at(lx, ly)
-        return { x = x + lx * c - ly * sn, y = y + lx * sn + ly * c }
+        return { x = box.entry.x + lx * c - ly * sn,
+                 y = box.entry.y + lx * sn + ly * c }
     end
 
-    if mode == "length" then
+    if box.mode == "length" then
         -- two handles, on the ends of the longer axis
-        if w >= h then
-            return { { x = at(-hw, 0).x, y = at(-hw, 0).y, axis = "x" },
-                     { x = at(hw, 0).x, y = at(hw, 0).y, axis = "x" } }
+        local a, b
+        if box.w >= box.h then
+            a, b = at(-hw, 0), at(hw, 0)
+            return { { x = a.x, y = a.y, axis = "x", sx = -1, sy = 0 },
+                     { x = b.x, y = b.y, axis = "x", sx = 1, sy = 0 } }
         end
-        return { { x = at(0, -hh).x, y = at(0, -hh).y, axis = "y" },
-                 { x = at(0, hh).x, y = at(0, hh).y, axis = "y" } }
+        a, b = at(0, -hh), at(0, hh)
+        return { { x = a.x, y = a.y, axis = "y", sx = 0, sy = -1 },
+                 { x = b.x, y = b.y, axis = "y", sx = 0, sy = 1 } }
     end
 
     local out = {}
     for _, sx in ipairs({ -1, 1 }) do
         for _, sy in ipairs({ -1, 1 }) do
             local p = at(sx * hw, sy * hh)
-            out[#out + 1] = { x = p.x, y = p.y, axis = "both" }
+            out[#out + 1] = { x = p.x, y = p.y, axis = "both", sx = sx, sy = sy }
         end
     end
     return out
+end
+
+-- A mouse drag on a handle: the corner OPPOSITE the one grabbed stays exactly
+-- where it is, so a prop grows into the gap you are filling instead of sliding
+-- out from under the edge you already lined up. `resize_to` stays centre-anchored
+-- for the keyboard, where "grow around itself" is the expected nudge.
+--
+-- `handle` is one of resize_handles(doc); (wx, wy) the cursor in world metres;
+-- `grid` snaps the sizes, never the centre -- a snapped anchor is a moved anchor,
+-- which is the one thing the drag exists to prevent.
+function M.resize_to_cursor(doc, handle, wx, wy, grid)
+    local box = box_of(doc)
+    if not box or not handle then return nil, "nothing to resize" end
+    local gx, gy = handle.sx or 0, handle.sy or 0
+    if gx == 0 and gy == 0 then return nil, "not a resize handle" end
+
+    local c, sn = math.cos(box.angle), math.sin(box.angle)
+    -- the anchor: the grabbed corner's mirror, in world space
+    local ax = box.entry.x - gx * box.w / 2 * c + gy * box.h / 2 * sn
+    local ay = box.entry.y - gx * box.w / 2 * sn - gy * box.h / 2 * c
+
+    -- the cursor in the prop's own frame, measured from the anchor
+    local dx, dy = wx - ax, wy - ay
+    local lx, ly = dx * c + dy * sn, -dx * sn + dy * c
+
+    local function size(v)
+        v = math.min(500, math.max(0.2, v))
+        if grid and grid > 0 then
+            v = math.max(grid, math.floor(v / grid + 0.5) * grid)
+        end
+        return v
+    end
+
+    local w = (gx ~= 0) and size(gx * lx) or box.w
+    local h = (gy ~= 0) and size(gy * ly) or box.h
+
+    local e = box.entry
+    e.x = ax + gx * w / 2 * c - gy * h / 2 * sn
+    e.y = ay + gx * w / 2 * sn + gy * h / 2 * c
+    e.w, e.h = w, h
+    return e
 end
 
 -- Absolute size, for a mouse drag on a handle. Sizes are symmetric about the
