@@ -13,8 +13,9 @@ love . --audit 4  # is level 4 parkable at all? exit 0 = a line exists
 ```
 
 Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
-`R` reset, `P` pause, `H` ghost (rig / trail / off), `Y` copy a share code,
-`I` import the clipboard, `F1` debug, `Esc` back to the level select.
+`R` restart the level you are on (campaign or custom), `P` pause, `H` ghost
+(rig / trail / off), `Y` copy a share code, `I` import the clipboard, `F1`
+debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 
 Level select: `W`/`S` choose, `Enter` open, `Tab` switch tab (Campaign /
@@ -24,7 +25,9 @@ Custom levels), `N` new level, `E` open the selected level in the editor,
 Custom levels live in `custom/` inside the LÖVE save directory (the empty tab
 prints the exact path). They are a separate tab from the campaign, they carry
 their own best times and ghosts, and deleting one asks once and removes the file
-and its index entry together.
+and its index entry together. A share code that carries a run arrives with its
+ghost: the sender's time becomes the time to beat until you drive something
+faster.
 
 Editor: `love . --edit`, or `E` on a level in the select.
 

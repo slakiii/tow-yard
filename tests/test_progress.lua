@@ -20,6 +20,8 @@ local M = { order = {
     "best_time_only_improves",
     "edited_level_keeps_completion_loses_time",
     "a_ghost_is_stored_and_expires_with_the_geometry",
+    "an_imported_run_becomes_the_ghost_to_beat",
+    "adopting_a_run_never_replaces_a_better_time",
 } }
 
 -- A parked session at a chosen clock reading; the fixture builds it through the
@@ -130,6 +132,46 @@ function M.a_ghost_is_stored_and_expires_with_the_geometry()
     edited.walls[1].h = edited.walls[1].h + 0.01
     H.expect(progress.ghost_text(p, edited) == nil,
              "a ghost recorded on other geometry must not be offered")
+end
+
+function M.an_imported_run_becomes_the_ghost_to_beat()
+    -- A share bundle carries a level and somebody's park. The ghost LOOKUP is
+    -- keyed on a progress entry, so writing only the blob means the ghost is
+    -- stored and never shown -- which is what an import used to do.
+    local lvl = levels.get(1)
+    local disk = fixtures.fake_disk()
+    local p = progress.open(disk)
+    local s = parked(lvl, 21.5)
+
+    H.expect(progress.ghost_text(p, lvl) == nil, "fixture: no ghost before the import")
+    local entry = progress.adopt(p, lvl, s.final)
+    H.expect(entry ~= nil, "adopt returns the entry it created")
+    H.expect(math.abs(entry.best - s.final.time) < 1e-9,
+        "the sender's park is the time to beat: " .. tostring(entry.best))
+    H.expect(entry.ghost == true, "and the entry claims the ghost, or ghost_text never looks")
+
+    H.expect(progress.put_ghost(p, lvl, "TOWYARD RUN 1\nfake\n"), "the blob stores")
+    H.expect(progress.ghost_text(p, lvl) ~= nil, "and the ghost is now offered")
+
+    H.expect(progress.save(p), "the entry is persisted")
+    local back = progress.open(disk)
+    H.expect(back.entries[lvl.id] ~= nil, "it survives a restart")
+    H.expect(back.entries[lvl.id].ghost == true, "with its ghost flag")
+    H.expect(math.abs(progress.mark(back, lvl).best - s.final.time) < 1e-9, "and its time")
+
+    H.expect(progress.adopt(p, lvl, nil) == nil, "adopting nothing is refused")
+end
+
+function M.adopting_a_run_never_replaces_a_better_time()
+    local lvl = levels.get(1)
+    local p = progress.open(fake_disk())
+    progress.record(p, lvl, parked(lvl, 12))
+    H.expect(math.abs(progress.mark(p, lvl).best - 12) < 1e-9, "fixture: 12 s is the best")
+
+    progress.adopt(p, lvl, parked(lvl, 30).final)
+    H.expect(math.abs(progress.mark(p, lvl).best - 12) < 1e-9,
+        "a slower imported run must not replace it: " .. tostring(progress.mark(p, lvl).best))
+    H.expect(progress.mark(p, lvl).ghost == true, "but the ghost claim stays")
 end
 
 return M

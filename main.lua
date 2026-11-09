@@ -56,7 +56,6 @@ local DRAG_SLOP = 3
 
 local game = {
     mode = MODE.menu,
-    index = 1,
     guide = true,
     debug = false,
     paused = false,
@@ -84,9 +83,17 @@ local function camera(lvl)
     return scale, ox, oy
 end
 
+-- A ghost that is stored but refused is invisible otherwise, so "why is there no
+-- ghost on my level?" has no answer anywhere. Not in the smoke: its store is a
+-- fixture that claims ghosts it never wrote. Defined before the loader that
+-- uses it -- a Lua local is not visible above its declaration.
+local function ghost_note(level, why)
+    if smoke.enabled then return end
+    print("ghost for " .. tostring(level and level.id) .. " not shown: " .. tostring(why))
+end
+
 local function load_level_object(lvl)
     game.last_played = lvl and lvl.id or game.last_played
-    game.index = levels.find(lvl.id) or game.index
     game.level = lvl
     game.s = session.new(game.level)
     game.run = run.new(game.level)
@@ -103,15 +110,24 @@ local function load_level_object(lvl)
     game.ghost = nil
     if game.progress and game.codec then
         local text = progress.ghost_text(game.progress, game.level)
-        local g = text and run.decode(text, game.codec)
-        if g and run.verify(game.level, g) then
-            -- runs stored before recording began with the first action carry an
-            -- idle prefix; without this the ghost hesitates at the start line
-            run.trim(g)
-            game.ghost = {
-                run = g, trail = run.trace(game.level, g),
-                s = session.new(game.level), step = 0,
-            }
+        local g, why = text and run.decode(text, game.codec)
+        if g then
+            local ok, detail = run.verify(game.level, g)
+            if ok then
+                -- runs stored before recording began with the first action carry an
+                -- idle prefix; without this the ghost hesitates at the start line
+                run.trim(g)
+                game.ghost = {
+                    run = g, trail = run.trace(game.level, g),
+                    s = session.new(game.level), step = 0,
+                }
+            else
+                ghost_note(game.level, detail)
+            end
+        elseif text then
+            ghost_note(game.level, "unreadable - " .. tostring(why))
+        elseif progress.mark(game.progress, game.level).ghost then
+            ghost_note(game.level, "the file is missing")
         end
     end
 end
@@ -120,8 +136,28 @@ local function load_level(n)
     load_level_object(levels.get(n))
 end
 
+-- Restart what you are actually playing. The catalogue index only describes
+-- campaign levels, so reloading by index dropped the player into whatever
+-- campaign level was last played -- pressing R on a custom track (or on an
+-- editor playtest) silently swapped the level under them.
+local function reload_level()
+    if game.level then load_level_object(game.level) end
+end
+
 local function say(text, seconds)
     game.toast = { text = text, expires = love.timer.getTime() + (seconds or 4) }
+end
+
+-- "Next level" is a campaign idea. On a custom level there is no next, and
+-- guessing from a stale index is how R used to land on the wrong track; saying
+-- so is the honest answer. Defined after `say`, which it needs to be in scope.
+local function next_campaign_level()
+    local i = levels.find(game.level and game.level.id)
+    if not i then
+        say("this level is not in the campaign", 3)
+        return
+    end
+    load_level(i % #levels.ALL + 1)
 end
 
 -- A share string from anywhere: the clipboard, a dropped file, eventually a
@@ -139,23 +175,34 @@ local function import_text(text)
             say("could not store that level", 6)
             return
         end
-        if got.run and run.verify(got.level, got.run) then
+        -- `got.run and run.verify(...)` would truncate the second return value,
+        -- and adopt needs the run's own time; keep the two apart.
+        local ok, final
+        if got.run then ok, final = run.verify(got.level, got.run) end
+        if ok then
+            -- The entry is what makes ghost_text() look for the blob: without it
+            -- the bundled ghost is stored and never shown.
+            progress.adopt(game.progress, got.level, final)
             progress.put_ghost(game.progress, got.level, run.encode(got.run, game.codec))
+            progress.save(game.progress)
         end
         game.custom = levelfmt.scan_custom(disk)
         if game.menu then menu.rebuild(game.menu, levels.ALL, game.custom) end
         -- open it: an imported level you cannot play is a download, not a level
         load_level_object(got.level)
         game.mode = MODE.play
-        say("imported " .. tostring(got.level.name))
+        say((ok and ("imported " .. tostring(got.level.name) .. " - its ghost is the time to beat")
+            or ("imported " .. tostring(got.level.name))), 6)
     elseif got.run then
-        local ok, why = run.verify(game.level, got.run)
+        local ok, final = run.verify(game.level, got.run)
         if ok then
+            progress.adopt(game.progress, game.level, final)
             progress.put_ghost(game.progress, game.level, run.encode(got.run, game.codec))
-            load_level(game.index)
+            progress.save(game.progress)
+            reload_level()
             say("rival ghost loaded")
         else
-            say("that run does not fit this level: " .. tostring(why), 6)
+            say("that run does not fit this level: " .. tostring(final), 6)
         end
     end
 end
@@ -701,10 +748,15 @@ end
 -- These numbers are scripted, and one level's content hash is deliberately stale
 -- so the "level changed" card is in the frame.
 local function smoke_progress()
+    -- A memory disk, not a no-op: a store that cannot read back what it wrote
+    -- makes every ghost in the smoke silently vanish, including the one an import
+    -- carries.
+    local files = {}
     local fakest = {
-        read = function() return nil end,
-        write = function() return true end,
-        remove = function() return true end,
+        read = function(n) return files[n] end,
+        write = function(n, d) files[n] = d; return true end,
+        remove = function(n) files[n] = nil; return true end,
+        mkdir = function() return true end,
     }
     local p = progress.open(fakest)
     local function line(lvl, stars, best, ghost, hash)
@@ -746,7 +798,7 @@ function love.load(args)
         game.custom = imported
         for _, w in ipairs(warnings) do print("custom: " .. w) end
     end
-    load_level(game.index)
+    load_level(1)
     -- the smoke harness drives play frames itself; a normal launch starts on the
     -- title screen
     game.mode = smoke.enabled and MODE.play or MODE.menu
@@ -775,7 +827,7 @@ local function update_play(dt)
 
     local acts = input.poll_actions(game.input)
     if acts.reset then
-        load_level(game.index)
+        reload_level()
         return
     end
     if acts.guide then game.guide = not game.guide end
@@ -1105,7 +1157,50 @@ local function smoke_step()
         -- the forced document is a fixture, not the player's work: mark it saved so
         -- quitting the smoke does not leave a recovery file in the save directory
         game.editor.baseline = doc.snapshot(game.editor.doc)
-    elseif smoke.frames >= 27 then
+    elseif smoke.frames == 27 then
+        -- R restarts the level you are PLAYING, not the catalogue slot it is not
+        -- in: a custom track has no index in levels.ALL, and the old reload threw
+        -- the player into whatever campaign level was last played.
+        local custom = doc.level(doc.blank("smoke-custom", "Smoke custom"))
+        load_level_object(custom)
+        game.mode = MODE.play
+        love.keypressed("r")          -- the real dispatch, not the handler directly
+        assert(game.level and game.level.id == "smoke-custom",
+            "R loaded " .. tostring(game.level and game.level.id) .. " instead of the custom level")
+        love.keypressed("tab")
+        assert(game.level.id == "smoke-custom",
+            "Tab jumped a custom level into the campaign: " .. tostring(game.level.id))
+        print("R RESTARTS THE ACTIVE LEVEL")
+
+        -- An imported custom track arrives with a ghost. Before, the blob was
+        -- written with no progress entry, so ghost_text() never looked for it and
+        -- the sender's line was invisible forever.
+        local imp = levelfmt.decode(levelfmt.encode(levels.get(1)))
+        imp.id, imp.name = "smoke-import", "Smoke import"
+        imp.series, imp.order = nil, nil
+        local si, ri = session.new(imp), run.new(imp)
+        local stop = imp.bay.x - (rig.CARAVAN.coupling - rig.CARAVAN.length / 2)
+        local tt = 0
+        while tt < 60 and not si.parked do
+            local inp = (si.rig.x > stop)
+                and { steer = 0, throttle = 0, brake = 1, handbrake = false }
+                or { steer = 0, throttle = 0, brake = 0, handbrake = true }
+            run.record(ri, inp)
+            session.update(si, inp, 1 / 120)
+            tt = tt + 1 / 120
+        end
+        run.finish(ri, si)
+        assert(si.parked, "fixture: the import level parks")
+        import_text(share.code(share.bundle(imp, ri, game.codec, "user"), game.codec))
+        assert(game.level and game.level.id == "smoke-import", "the import did not open its level")
+        assert(game.ghost ~= nil, "an imported level must show the ghost it arrived with")
+        print("IMPORT SHOWS ITS GHOST")
+        levelfmt.delete_custom(disk, "smoke-import")
+        if love.filesystem.read(levelfmt.CUSTOM_INDEX) == "" then
+            disk.remove(levelfmt.CUSTOM_INDEX)     -- leave the save directory as we found it
+        end
+        game.custom = levelfmt.scan_custom(disk)
+    elseif smoke.frames >= 28 then
         print("SMOKE OK")
         love.event.quit(0)
     end
@@ -1165,7 +1260,7 @@ local function play_keypressed(key)
             open_menu()
         end
     elseif key == "r" then
-        load_level(game.index)
+        reload_level()
     elseif key == "g" then
         game.guide = not game.guide
     elseif key == "p" then
@@ -1190,9 +1285,9 @@ local function play_keypressed(key)
         if #game.progress.warnings > 0 then msg = msg .. "  (" .. game.progress.warnings[1] .. ")" end
         print(msg)
     elseif key == "n" and game.s.parked then
-        load_level(game.index % #levels.ALL + 1)
+        next_campaign_level()
     elseif key == "tab" then
-        load_level(game.index % #levels.ALL + 1)
+        next_campaign_level()
     end
 end
 

@@ -126,6 +126,27 @@ function M.record(self, level, s)
     return entry, improved
 end
 
+-- Take a run that arrived attached to a level (a share import). The ghost
+-- LOOKUP is keyed on an entry, so a blob alone is a ghost that is stored and
+-- never shown; and an entry needs a time, because the file format only keeps
+-- entries with one. The run's own replay time is that time -- it is what the
+-- sender parked, i.e. the bar to beat -- and a stored best is only beaten by
+-- something faster, never replaced by something slower.
+function M.adopt(self, level, final)
+    if not (level and type(level.id) == "string" and final and final.time) then return nil end
+
+    local content = content_of(self, level)
+    local entry = self.entries[level.id]
+    if not entry or entry.content ~= content then
+        entry = { id = level.id, stars = 0, best = nil, ghost = false, content = content }
+        self.entries[level.id] = entry
+    end
+    if not entry.best or final.time < entry.best then entry.best = final.time end
+    entry.ghost = true
+    self.dirty = true
+    return entry
+end
+
 -- What the menu shows for a level. Completion is a memory; the time, the stars
 -- and the ghost are content-bound.
 function M.mark(self, level)
