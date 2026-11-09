@@ -401,6 +401,20 @@ local function editor_keypressed(key)
         return
     end
 
+    -- An armed tool is a pending placement, not a reason to leave: Esc drops back
+    -- to `select` so the thing you just put down can be dragged, turned or
+    -- resized. A second Esc (or one with `select` already active) goes back to the
+    -- level select as before.
+    if key == "escape" and e.tool ~= "select" then
+        e.tool = "select"
+        if e.doc.selection then
+            say("select: drag, Q/E or a handle adjusts the selection", 4)
+        else
+            say("select: click a prop to adjust it", 4)
+        end
+        return
+    end
+
     if key == "escape" then
         -- never leave silently with unsaved work: a copy is kept either way, but
         -- "did my edit go anywhere?" is a question the editor should answer
@@ -918,6 +932,18 @@ local function smoke_step()
         -- showing: the frame that has to prove the rails are readable
         open_editor(levels.get(1))
         local e = game.editor
+
+        -- Esc with a tool armed is "put the tool down", not "leave": it falls back
+        -- to `select` so the thing you just placed can be adjusted. This calls the
+        -- error handler's own key path, so it guards the real branch.
+        e.tool = "umbrella"
+        editor_keypressed("escape")
+        assert(e.tool == "select",
+            "Esc with a tool armed must fall back to select, got " .. tostring(e.tool))
+        assert(game.mode == MODE.editor, "Esc with a tool armed must not leave the editor")
+        print("EDITOR ESC -> SELECT")
+        game.toast = nil                      -- keep the capture unchanged
+
         e.tool = "hedge"
         doc.add(e.doc, "rv", e.doc.level.spawn.x, e.doc.level.spawn.y)
         -- the two new campsite kinds, placed where the yard is empty: the frame

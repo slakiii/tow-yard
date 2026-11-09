@@ -103,7 +103,7 @@ offer no handles -- stretching them is not authoring, it is distorting.
 | `S` | save to `custom/` (a shipped level's id becomes `<id>-copy`) |
 | `L` | copy a `lib/levels.lua` entry to the clipboard, and write it to `<save dir>/drafts/<id>.lua` |
 | `O` | copy the level as a share code |
-| `Esc` | back to the level select (asks first if there are unsaved changes) |
+| `Esc` | back to the `select` tool if one is armed (the thing you just placed stays selected); otherwise back to the level select, asking first if there are unsaved changes |
 
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 `D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,
