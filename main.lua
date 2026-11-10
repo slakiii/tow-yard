@@ -861,7 +861,11 @@ local function fix_window_size(why)
     if window_settled then return end
     local w, h, flags = love.window.getMode()
     local want_w, want_h = want_window_size()
-    if w == want_w and h == want_h then
+    -- Within a pixel is the size we asked for: on Wayland the client area can come
+    -- back one pixel short of the surface (decorations), and fighting that would be
+    -- three futile setMode calls on every launch.
+    local function same(a, b) return math.abs(a - b) <= 1 end
+    if same(w, want_w) and same(h, want_h) then
         window_settled = true
         return
     end
@@ -1527,6 +1531,18 @@ local function smoke_step()
         love.graphics.captureScreenshot("smoke-editor-palette.png")
     elseif smoke.frames >= 34 then
         draw.set_pointer(nil)
+        -- The verdict, once, after every frame has had a chance to settle: the
+        -- WINDOW lines only report attempts, and a Wayland resize is a request
+        -- that lands a frame later, so reading getMode() straight after setMode
+        -- says nothing.
+        local fw, fh = love.window.getMode()
+        local dw, dh = love.window.getDesktopDimensions()
+        local want_w, want_h = want_window_size()
+        local px, py = love.window.getPosition()
+        -- no getDisplayIndex in 11.5 (it is 12.0); the position says which screen
+        print(string.format("WINDOW final %dx%d (asked %dx%d, desktop %dx%d, dpi %.2f, at %d,%d, attempts %d)",
+            fw, fh, want_w, want_h, dw or -1, dh or -1, love.window.getDPIScale(),
+            px, py, window_attempts))
         print("SMOKE OK")
         love.event.quit(0)
     end
