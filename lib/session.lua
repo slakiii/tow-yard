@@ -10,6 +10,13 @@ M.DWELL = 0.12        -- hold the brake at a standstill this long to engage reve
 M.PARK_SPEED = 0.05   -- m/s, must be stopped to count
 M.PARK_HOLD = 0.25    -- seconds of stillness before the park is accepted
 
+-- A clipped cone costs time, not the attempt. Two seconds is ~7-9% of a par run
+-- and a cone-rich line can never be the record line; a body contact is the
+-- thing that voids an attempt (see revert()). This lives in the sim, not in the
+-- shell, because a stored ghost's time is recomputed from its replay: put the
+-- price in the card and the replay would score a different run.
+M.CONE_PENALTY = 2.0
+
 -- The input grid. Every number the sim consumes is snapped to one of these, so a
 -- run recorded live and a run replayed from a file feed the physics exactly the
 -- same values -- "the replay matches" becomes structural instead of a tolerance
@@ -74,6 +81,9 @@ function M.new(level)
         walls = walls,
         bay_poly = geom.rect_poly(level.bay.x, level.bay.y, level.bay.w, level.bay.h, level.bay.angle),
         cones = clone_cones(level.cones),
+        cone_hits = 0,        -- knockables clipped: the penalty is priced per hit
+        damaged = false,      -- a body contact: voids the attempt, not the park
+        damage = nil,         -- which body contact ("wall" / "jackknife")
         t = 0,
         started = false,
         dwell = 0,
@@ -179,6 +189,10 @@ local function revert(s, reason)
     s.bumps = s.bumps + 1
     s.bump_flash = 0.35
     s.last_bump = reason
+    -- Touching a wall or jackknifing is damage: the rig is rebuilt and the
+    -- attempt can no longer set a record. The park still counts (see check_park).
+    s.damaged = true
+    s.damage = reason
     cue(s, { kind = "bump", cause = reason, speed = impact })
 end
 
@@ -237,7 +251,8 @@ function M.update(s, input, dt)
         if not c.hit and (geom.circle_overlap_poly(c.x, c.y, c.r, car)
             or geom.circle_overlap_poly(c.x, c.y, c.r, van)) then
             c.hit = true
-            cue(s, { kind = "cone", speed = math.abs(s.rig.v) })
+            s.cone_hits = s.cone_hits + 1
+            cue(s, { kind = "cone", speed = math.abs(s.rig.v), penalty = M.CONE_PENALTY })
             s.bumps = s.bumps + 1
             s.bump_flash = 0.3
             s.last_bump = "cone"
@@ -271,7 +286,20 @@ function M.check_park(s, dt)
         s.park_hold = s.park_hold + dt
         if s.park_hold >= M.PARK_HOLD then
             s.parked = true
-            s.final = { time = s.t, bumps = s.bumps, angle_err = math.deg(err) }
+            local penalties = s.cone_hits * M.CONE_PENALTY
+            s.final = {
+                -- the time that counts: the drive plus what the cones cost. Both
+                -- terms ride along so the card can show the arithmetic and the
+                -- replay scores the same run.
+                time = s.t + penalties,
+                driven = s.t,
+                penalties = penalties,
+                cone_hits = s.cone_hits,
+                damaged = s.damaged or false,
+                damage = s.damage,
+                bumps = s.bumps,
+                angle_err = math.deg(err),
+            }
             cue(s, { kind = "park", stars = M.grade(s) })
         end
     else
@@ -283,6 +311,9 @@ end
 function M.grade(s)
     if not s.parked then return 0 end
     local f = s.final
+    -- a void attempt earns nothing: the card must not strike the time through and
+    -- then hand out a star for it
+    if f.damaged then return 0 end
     if f.bumps == 0 and f.time <= s.level.par then return 3 end
     if f.bumps == 0 or f.time <= s.level.par * 1.5 then return 2 end
     return 1

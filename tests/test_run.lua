@@ -32,6 +32,7 @@ local M = { order = {
     "verify_ignores_the_claimed_time",
     "a_ghost_keeps_driving_after_the_player_parks",
     "follow_steps_at_the_fixed_cadence",
+    "a_replay_scores_the_run_the_way_it_was_driven",
 } }
 
 local DT = 1 / 120
@@ -403,6 +404,62 @@ function M.follow_steps_at_the_fixed_cadence()
     local spent = { run = { frames = {} }, s = session.new(lvl), step = 0 }
     H.expect(run.follow(spent, 6 * DT, DT, 12) == 0, "a spent run has nothing to drive")
     H.expect(run.follow(nil, 6 * DT, DT, 12) == 0, "and no ghost is not a crash")
+end
+
+-- A straight run at the bay with one cone on the line: the price of the clip has
+-- to survive the round trip through the document.
+local function penalty_level()
+    return {
+        id = "penalty-fixture",
+        name = "Penalty fixture",
+        hint = "",
+        bounds = { x0 = -20, y0 = -20, x1 = 50, y1 = 20 },
+        spawn = { x = 0, y = 0, th = 0 },
+        bay = { x = 30, y = 0, w = 20, h = 20, angle = 0, tol = math.rad(6) },
+        walls = {},
+        cones = { { x = 12, y = 0, r = 0.6, kind = "cone" } },
+        par = 10,
+        apron = 0,
+    }
+end
+
+function M.a_replay_scores_the_run_the_way_it_was_driven()
+    -- The penalty lives in the sim, so the ghost's card is the run's own numbers.
+    -- Put the price in the shell instead and a stored run would replay to a
+    -- different score than the one that was recorded.
+    local lvl = penalty_level()
+    local s, r = session.new(lvl), run.new(lvl)
+
+    local drive = { steer = 0, throttle = 1, brake = 0, handbrake = false }
+    local coast = { steer = 0, throttle = 0, brake = 1, handbrake = false }
+    local hold = { steer = 0, throttle = 0, brake = 0, handbrake = true }
+
+    local guard = 0
+    while s.rig.x < 27 and guard < 2400 do
+        run.record(r, drive); session.update(s, drive, DT); guard = guard + 1
+    end
+    guard = 0
+    while s.rig.v > 0.12 and guard < 1200 do
+        run.record(r, coast); session.update(s, coast, DT); guard = guard + 1
+    end
+    guard = 0
+    while not s.parked and guard < 1200 do
+        run.record(r, hold); session.update(s, hold, DT); guard = guard + 1
+    end
+    run.finish(r, s)
+
+    H.expect(s.parked, "fixture: the drive must park")
+    H.expect(s.final.cone_hits == 1, "fixture: it clipped the cone: " .. s.final.cone_hits)
+    H.expect(s.final.time > s.final.driven, "fixture: the counted time carries the penalty")
+
+    local back = run.decode(run.encode(r, codec), codec)
+    H.expect(back ~= nil, "fixture: the run must survive the document")
+    local again = run.replay(lvl, back)
+    H.expect(again.parked, "the replay parks")
+    H.expect(again.final.time == s.final.time, "the replay scores the same time exactly")
+    H.expect(again.final.penalties == s.final.penalties,
+        "and the same penalty: " .. tostring(again.final.penalties))
+    H.expect(again.final.damaged == false, "a cone is not damage")
 end
 
 return M

@@ -31,6 +31,8 @@ local M = { order = {
     "cone_cue_fires_once",
     "park_cue_carries_the_stars",
     "par_cue_fires_once",
+    "a_cone_costs_time_not_the_attempt",
+    "damage_voids_the_attempt_but_not_the_park",
 } }
 
 local DT = 1 / 120
@@ -327,6 +329,64 @@ function M.par_cue_fires_once()
     end
     H.expect(s.t > lvl.par, "fixture: the clock should be past par")
     H.expect(n == 1, "crossing par ticks once, got " .. n)
+end
+
+-- A short level with the bay straight ahead, so a test can put one obstacle on
+-- the line and drive at it: nothing else is in the way.
+local function straight_to_the_bay()
+    local lvl = fixtures.field()
+    lvl.bounds = { x0 = -20, y0 = -20, x1 = 50, y1 = 20 }
+    lvl.spawn = { x = 0, y = 0, th = 0 }
+    lvl.bay = { x = 30, y = 0, w = 20, h = 20, angle = 0, tol = math.rad(6) }
+    return lvl
+end
+
+local function park_here(s)
+    place_in_bay(s, 0)
+    for _ = 1, 60 do session.update(s, idle(), DT) end
+    return s.parked
+end
+
+function M.a_cone_costs_time_not_the_attempt()
+    -- A clip is priced, not fatal: the time that counts is the drive plus the
+    -- cone penalty, and both numbers ride on `final` so the card can show where
+    -- the extra seconds came from and the replay can reproduce them.
+    local lvl = straight_to_the_bay()
+    lvl.cones = { { x = 12, y = 0, r = 0.6, kind = "cone" } }
+    local s = session.new(lvl)
+
+    local guard = 0
+    while s.cone_hits == 0 and guard < 2400 do
+        session.update(s, forward(), DT)
+        guard = guard + 1
+    end
+    H.expect(s.cone_hits == 1, "fixture: the rig must clip the cone: " .. s.cone_hits)
+    H.expect(s.damaged ~= true, "a knocked cone is not damage")
+
+    H.expect(park_here(s), "fixture: the run must still park")
+    H.expect(s.final.cone_hits == 1, "the park reports the clip")
+    H.near(s.final.penalties, session.CONE_PENALTY, 1e-9, "one cone, one penalty")
+    H.near(s.final.driven, s.t, 1e-9, "the driven time is still reported")
+    H.near(s.final.time, s.t + session.CONE_PENALTY, 1e-9, "the counted time includes it")
+    H.expect(s.final.damaged == false, "and the attempt is not voided")
+    H.expect(session.grade(s) <= 2, "but it costs the clean-run star")
+end
+
+function M.damage_voids_the_attempt_but_not_the_park()
+    -- Everything the levels are audited against is a zero-bump line, so a void
+    -- attempt is never a dead end: it is the price of touching a body.
+    local lvl = straight_to_the_bay()
+    lvl.walls = { { x = 10, y = 0, w = 2, h = 6, kind = "hedge" } }
+    local s = session.new(lvl)
+
+    for _ = 1, 480 do session.update(s, forward(), DT) end
+    H.expect(s.damaged == true, "fixture: the wall contact must damage the rig")
+    H.expect(s.damage == "wall", "and name the contact: " .. tostring(s.damage))
+    H.expect(s.final == nil, "fixture: nothing has parked yet")
+
+    H.expect(park_here(s), "a damaged rig can still be parked")
+    H.expect(s.final.damaged == true, "and the park reports the damage")
+    H.expect(session.grade(s) == 0, "a damaged park earns no stars")
 end
 
 return M
