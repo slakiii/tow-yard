@@ -837,23 +837,51 @@ local WINDOW_MARGIN_X, WINDOW_MARGIN_Y = 80, 120
 -- that minimum instead of at the requested size: LÖVE applies the size before the
 -- minimum-size limits (love2d/love#2287), and the compositor sizes the first
 -- mapped surface from those limits. This game opened at 900x560 -- exactly its
--- minwidth/minheight -- on a 1920x1200 desktop at 100% scaling. Asking again is a
--- plain resize of a window that is already mapped, which compositors honour, and
--- it is skipped when the window came up at the size conf.lua asked for, so a
--- compositor that got it right the first time sees no second setMode at all.
-local function fix_window_size()
-    -- getMode hands back (width, height, flags): the size it *has*, and a table
-    -- that is also what setMode takes back -- resizable, minwidth/minheight,
-    -- vsync, position and all. Reading it as (x, y, w, h, flags) takes the flags
-    -- table for a number, and then the resize silently drops the minimum size, so
-    -- the window could afterwards be dragged down to nothing.
-    local w, h, flags = love.window.getMode()
+-- minwidth/minheight -- on a 1920x1200 desktop at 100% scaling.
+--
+-- One boot-time call is not enough there: at love.load the surface may not be
+-- mapped (and the desktop size not yet known), so the request can be dropped. The
+-- check therefore runs again for the first few frames -- after the window exists --
+-- and stops for good as soon as the size is the one we want, so a compositor that
+-- honoured the first request sees exactly one comparison and no second setMode.
+local WINDOW_MARGIN_X, WINDOW_MARGIN_Y = 80, 120
+local WINDOW_ATTEMPTS = 3          -- then accept it: a tiling WM may mean it
+local window_attempts, window_settled, window_frames = 0, false, 0
+
+local function want_window_size()
     local dw, dh = love.window.getDesktopDimensions()
-    if not dw or dw <= 0 or not dh or dh <= 0 then return end
-    local want_w = math.min(1280, math.max(900, dw - WINDOW_MARGIN_X))
-    local want_h = math.min(720, math.max(560, dh - WINDOW_MARGIN_Y))
-    if w == want_w and h == want_h then return end
+    -- before the display is configured this is 0x0; ask for the conf size rather
+    -- than clamp to a screen we cannot see yet, and let the frames below retry
+    if not dw or dw <= 0 or not dh or dh <= 0 then return 1280, 720 end
+    return math.min(1280, math.max(900, dw - WINDOW_MARGIN_X)),
+           math.min(720, math.max(560, dh - WINDOW_MARGIN_Y))
+end
+
+local function fix_window_size(why)
+    if window_settled then return end
+    local w, h, flags = love.window.getMode()
+    local want_w, want_h = want_window_size()
+    if w == want_w and h == want_h then
+        window_settled = true
+        return
+    end
+    if window_attempts >= WINDOW_ATTEMPTS then
+        window_settled = true
+        if smoke.enabled then
+            print(string.format("WINDOW gave up at %dx%d (want %dx%d)", w, h, want_w, want_h))
+        end
+        return
+    end
+    window_attempts = window_attempts + 1
+    -- flags is getMode's settings table, so resizable/minwidth/minheight/vsync and
+    -- the position ride along: this asks for a size, not for a different window
     love.window.setMode(want_w, want_h, flags)
+    if smoke.enabled then
+        local nw, nh = love.window.getMode()
+        local dw, dh = love.window.getDesktopDimensions()
+        print(string.format("WINDOW %s: %dx%d -> want %dx%d (desktop %dx%d) -> now %dx%d",
+            why, w, h, want_w, want_h, dw or -1, dh or -1, nw, nh))
+    end
 end
 
 function love.load(args)
@@ -888,7 +916,7 @@ function love.load(args)
 
     -- before anything creates a font or a canvas: setMode replaces the window and
     -- its GL context, so objects made earlier would belong to the old one
-    fix_window_size()
+    fix_window_size("boot")
 
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
@@ -1622,6 +1650,11 @@ end
 -- ---------------------------------------------------------------------------
 
 function love.update(dt)
+    -- The window, again, once it is really on screen: see fix_window_size.
+    if not window_settled and window_frames < 8 then
+        window_frames = window_frames + 1
+        fix_window_size("frame " .. window_frames)
+    end
     if game.mode ~= MODE.editor then
         if game.mode == MODE.play then
             update_play(dt)
