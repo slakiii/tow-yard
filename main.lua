@@ -1291,6 +1291,28 @@ local function smoke_step()
         end
         game.custom = levelfmt.scan_custom(disk)
     elseif smoke.frames == 28 then
+        -- The card's numbers come from the park, not from the fixture: park level 1
+        -- through the real loop (its store says the record is 13.21) and check the
+        -- record and the delta the shell hands the card.
+        load_level(1)
+        game.s.started = true
+        game.s.t = 15.0                      -- a 15.00 run: slower than 13.21
+        session.place_caravan(game.s, game.level.bay.x, game.level.bay.y, game.level.bay.angle)
+        smoke.frozen = false
+        for _ = 1, 20 do
+            update_play(0.1)
+            if game.s.parked then break end
+        end
+        smoke.frozen = true
+        assert(game.s.parked, "fixture: the placed caravan must park through update_play")
+        assert(math.abs((game.record or 0) - 13.21) < 0.005,
+            "the card did not get the record: " .. tostring(game.record))
+        assert(game.delta and math.abs(game.delta - (game.s.final.time - game.record)) < 1e-9,
+            "the delta must be counted time minus record: " .. tostring(game.delta))
+        assert(game.new_best == false, "a slower run is not a new best")
+        print(string.format("CARD record %.2f  time %.2f  delta %+.2f",
+            game.record, game.s.final.time, game.delta))
+    elseif smoke.frames == 29 then
         -- the result card's other two states, forced: new best (a record it beat)
         -- and a void attempt (a time that does not stand)
         game.toast = nil                       -- the import toast is a previous frame's news
@@ -1299,17 +1321,17 @@ local function smoke_step()
         game.s.final = { time = 21.00, driven = 21.00, penalties = 0, cone_hits = 0,
                          bumps = 0, angle_err = 0.6, damaged = false, damage = nil }
         game.record, game.delta, game.new_best = 22.50, -1.50, true
-    elseif smoke.frames == 29 then
+    elseif smoke.frames == 30 then
         love.graphics.captureScreenshot("smoke-result-best.png")
         game.new_best = false
         game.s.t, game.s.bumps = 23.10, 1
         game.s.final = { time = 23.10, driven = 23.10, penalties = 0, cone_hits = 0,
                          bumps = 1, angle_err = 1.4, damaged = true, damage = "wall" }
         game.record, game.delta = 22.50, 0.60
-    elseif smoke.frames == 30 then
+    elseif smoke.frames == 31 then
         love.graphics.captureScreenshot("smoke-result-invalid.png")
         print("RESULT CARD STATES")
-    elseif smoke.frames >= 31 then
+    elseif smoke.frames >= 32 then
         print("SMOKE OK")
         love.event.quit(0)
     end
