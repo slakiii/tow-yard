@@ -826,6 +826,36 @@ local function smoke_progress()
     return p
 end
 
+-- Leave room for the title bar, the panel and the window border: a window that
+-- is exactly the desktop size cannot be moved, and on Wayland one that is LARGER
+-- than the desktop spawns with its edges cut off (SDL#11747, kwin_wayland).
+local WINDOW_MARGIN_X, WINDOW_MARGIN_Y = 80, 120
+
+-- Ask for the window size once more, now that there is a window to ask.
+--
+-- On KWin/Wayland a resizable window whose minimum size is set can be created AT
+-- that minimum instead of at the requested size: LÖVE applies the size before the
+-- minimum-size limits (love2d/love#2287), and the compositor sizes the first
+-- mapped surface from those limits. This game opened at 900x560 -- exactly its
+-- minwidth/minheight -- on a 1920x1200 desktop at 100% scaling. Asking again is a
+-- plain resize of a window that is already mapped, which compositors honour, and
+-- it is skipped when the window came up at the size conf.lua asked for, so a
+-- compositor that got it right the first time sees no second setMode at all.
+local function fix_window_size()
+    -- getMode hands back (width, height, flags): the size it *has*, and a table
+    -- that is also what setMode takes back -- resizable, minwidth/minheight,
+    -- vsync, position and all. Reading it as (x, y, w, h, flags) takes the flags
+    -- table for a number, and then the resize silently drops the minimum size, so
+    -- the window could afterwards be dragged down to nothing.
+    local w, h, flags = love.window.getMode()
+    local dw, dh = love.window.getDesktopDimensions()
+    if not dw or dw <= 0 or not dh or dh <= 0 then return end
+    local want_w = math.min(1280, math.max(900, dw - WINDOW_MARGIN_X))
+    local want_h = math.min(720, math.max(560, dh - WINDOW_MARGIN_Y))
+    if w == want_w and h == want_h then return end
+    love.window.setMode(want_w, want_h, flags)
+end
+
 function love.load(args)
     local want_audit, audit_arg, quick = false, nil, false
     for i, a in ipairs(args or {}) do
@@ -855,6 +885,10 @@ function love.load(args)
     for _, a in ipairs(args or {}) do
         if a == "--edit" then want_edit = true end
     end
+
+    -- before anything creates a font or a canvas: setMode replaces the window and
+    -- its GL context, so objects made earlier would belong to the old one
+    fix_window_size()
 
     love.graphics.setBackgroundColor(0.05, 0.05, 0.06)
     draw.init()
