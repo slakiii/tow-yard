@@ -54,9 +54,9 @@ kills it and a `timeout` reports 124 instead of a failure. `--smoke` installs it
 own `love.errorhandler` that prints the traceback and exits 1, so trust the exit
 code and read the log.
 
-`--smoke` is the real render check: it draws a scene frame, a parked-result
-frame and a debug frame, writes screenshots to the LÖVE save directory, then
-quits 0. A `timeout` exit of 124 only proves the process did not crash.
+`--smoke` is the real render check: it draws a scene frame, the result card in
+its three states (slower than the record, a new best, a void attempt) and a
+debug frame, writes screenshots to the LÖVE save directory, then quits 0. A `timeout` exit of 124 only proves the process did not crash.
 
 ## Architecture: pure core, thin shell
 
@@ -93,6 +93,15 @@ quits 0. A `timeout` exit of 124 only proves the process did not crash.
   advances on the player's own post-start step count (`run.advance`), so both
   leave the line together; pausing cannot let it drive off. Old stored runs are
   trimmed on load (`run.trim`) because they carry that prefix.
+- **Scoring lives in the sim, and the card reads it back.** A knocked cone costs
+  `session.CONE_PENALTY` (2.0 s) and the counted time is `t + penalties`; a wall
+  or jackknife sets `damaged`, which voids the attempt (no best, no star, no
+  ghost) while the park still completes. Put that arithmetic in the shell and a
+  stored ghost would replay to a different score than the card that recorded it
+  -- `run.verify` recomputes everything from the replay, so `final` must carry
+  `driven`, `penalties`, `cone_hits`, `damaged` and `damage`. The HUD clock shows
+  the counted time for the same reason: the number the player watches is the
+  number the card reports.
 - A run is what makes a ghost honest: `lib/run.lua` records one quantised frame
   per physics step, serialises it to four bytes per frame, replays it through a
   fresh session, and `verify` refuses a run from other geometry or another build

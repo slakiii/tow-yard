@@ -18,6 +18,15 @@ Keyboard: `WASD` / arrows to drive, `Space` handbrake, `G` guide arc,
 sound on/off, `F1` debug, `Esc` back to the level select.
 Drop a `.towyard` file on the window to import it.
 
+Scoring: the clock you watch is the time that counts. A knocked cone costs
+**+2.00 s** and says so as it happens; touching a wall or jackknifing **voids the
+attempt** — you still park and still see the time, but it cannot set a record,
+earn a pip or replace the ghost. The result card shows that time, the record it
+was measured against and the signed difference between them. Three pips are for
+a clean run inside par; two for clean-or-quick; a void attempt earns none.
+Every shipped level is audited for a zero-bump line, so "void" is never a dead
+end: there is always a clean line to drive.
+
 Level select: `W`/`S` choose, `Enter` open, `Tab` switch tab (Campaign /
 Custom levels), `N` new level, `E` open the selected level in the editor,
 `X` delete a custom level, `I` paste a share code, `M` sound on/off, `Esc` quit.
