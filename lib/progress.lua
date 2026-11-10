@@ -118,6 +118,14 @@ function M.record(self, level, s)
         self.entries[level.id] = entry
     end
 
+    -- A void attempt is still a park: the level counts as completed, but a time,
+    -- a star or a ghost earned on a damaged body does not stand. The caller gets
+    -- `false`, which is also what stops the ghost being stored.
+    if s.final.damaged then
+        self.dirty = true
+        return entry, false
+    end
+
     local improved = (not entry.best) or s.final.time < entry.best
     if improved then entry.best = s.final.time end
     entry.stars = math.max(entry.stars or 0, session.grade(s))

@@ -22,6 +22,7 @@ local M = { order = {
     "a_ghost_is_stored_and_expires_with_the_geometry",
     "an_imported_run_becomes_the_ghost_to_beat",
     "adopting_a_run_never_replaces_a_better_time",
+    "a_damaged_park_cannot_improve_or_claim_a_ghost",
 } }
 
 -- A parked session at a chosen clock reading; the fixture builds it through the
@@ -172,6 +173,47 @@ function M.adopting_a_run_never_replaces_a_better_time()
     H.expect(math.abs(progress.mark(p, lvl).best - 12) < 1e-9,
         "a slower imported run must not replace it: " .. tostring(progress.mark(p, lvl).best))
     H.expect(progress.mark(p, lvl).ghost == true, "but the ghost claim stays")
+end
+
+-- A parked session whose rig has really hit something: a wall in front of the
+-- spawn, a crash, then a normal park in the bay. Going through the sim (rather
+-- than setting `damaged = true` by hand) is what keeps the test honest.
+local function damaged_park(lvl, t)
+    local blocked = fixtures.deep_copy(lvl)
+    blocked.walls[#blocked.walls + 1] = {
+        x = blocked.spawn.x + 8, y = blocked.spawn.y, w = 2, h = 10, kind = "hedge" }
+    local s = session.new(blocked)
+    local drive = { steer = 0, throttle = 1, brake = 0, handbrake = false }
+    for _ = 1, 480 do session.update(s, drive, 1 / 120) end
+    H.expect(s.damaged, "fixture: the wall contact must damage the rig")
+    session.place_caravan(s, blocked.bay.x, blocked.bay.y, blocked.bay.angle)
+    s.t = t or 0
+    local hold = { steer = 0, throttle = 0, brake = 0, handbrake = true }
+    for _ = 1, 60 do session.update(s, hold, 1 / 120) end
+    H.expect(s.parked, "fixture: a damaged rig must still park")
+    return s, blocked
+end
+
+function M.a_damaged_park_cannot_improve_or_claim_a_ghost()
+    -- The park happened, so the level counts as completed; nothing earned on a
+    -- damaged body stands, and the ghost it would have stored is not this run.
+    local disk = fake_disk()
+    local p = progress.open(disk)
+    local s, used = damaged_park(levels.get(1), 9)
+
+    local entry, improved = progress.record(p, used, s)
+    H.expect(improved == false, "a damaged park cannot set a best")
+    H.expect(entry.best == nil, "so there is no time: " .. tostring(entry.best))
+    H.expect(entry.stars == 0, "no stars")
+    H.expect(entry.ghost == false, "and it does not claim a ghost")
+    H.expect(progress.mark(p, used).completed == true, "but the level counts as completed")
+
+    -- a clean park on the same level afterwards owns the record
+    local clean = parked(used, 21.5)
+    local e2, ok = progress.record(p, used, clean)
+    H.expect(ok == true, "a clean park improves")
+    H.expect(math.abs(e2.best - clean.final.time) < 1e-9, "and takes the time: " .. tostring(e2.best))
+    H.expect(e2.ghost == true, "with a ghost")
 end
 
 return M
