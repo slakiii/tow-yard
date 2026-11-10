@@ -52,6 +52,22 @@ local function set(c, a)
     love.graphics.setColor(c[1], c[2], c[3], a or 1)
 end
 
+-- The pointer is an input, so it comes from one place. `--smoke` drives it: a
+-- Wayland client cannot move the real cursor (SDL has no pointer warp on
+-- Wayland, so love.mouse.setPosition is a silent no-op), and a frame that
+-- "hovered" a tile by warping hovered nothing at all -- which is how the palette
+-- tooltip frame failed on KWin while passing on X11.
+local pointer_override = nil
+
+function D.set_pointer(p)
+    pointer_override = p
+end
+
+local function mouse_pos()
+    if pointer_override then return pointer_override.x, pointer_override.y end
+    return love.mouse.getPosition()
+end
+
 local function flat(pts)
     local out = {}
     for i = 1, #pts do
@@ -968,7 +984,7 @@ function D.editor_world(doc, state)
     -- what a click would put down, drawn faintly under the cursor: the cheapest
     -- possible answer to "how do I add something"
     if state and state.tool and state.tool ~= "select" then
-        local mx, my = love.mouse.getPosition()
+        local mx, my = mouse_pos()
         if mx > D.RAIL then
             local W, H = love.graphics.getDimensions()
             local sx, sy = snap_to(state, state.cam.x + (mx - W / 2) / scale,
@@ -1257,7 +1273,7 @@ function D.editor_ui(doc, state, game)
 
     -- The palette: grouped tiles, drawn by the art that draws the yard, with the
     -- tooltip carrying the words the rail no longer has room for.
-    local mx, my = love.mouse.getPosition()
+    local mx, my = mouse_pos()
     local lay = D.palette_layout(state.palette, W, H)
     local hover = nil
 

@@ -1350,8 +1350,9 @@ local function smoke_step()
         end
         editor_errors()
 
-        -- put the pointer over the yard so the frame shows the placement preview
-        love.mouse.setPosition(math.floor(W * 0.62), math.floor(H * 0.52))
+        -- put the pointer over the yard so the frame shows the placement preview.
+        -- Injected, not warped: see draw.set_pointer.
+        draw.set_pointer({ x = math.floor(W * 0.62), y = math.floor(H * 0.52) })
     elseif smoke.frames == 18 then
         love.graphics.captureScreenshot("smoke-editor.png")
     elseif smoke.frames == 19 then
@@ -1485,17 +1486,19 @@ local function smoke_step()
             if (t.item.tool or t.item.kind) == "umbrella" then hover = t end
         end
         assert(hover, "fixture: the umbrella tile must be on the rail")
-        love.mouse.setPosition(math.floor(hover.x + hover.w / 2),
-                               math.floor(hover.y + hover.h / 2))
-        local mx, my = love.mouse.getPosition()
+        -- the pointer is injected: love.mouse.setPosition does nothing on Wayland,
+        -- so warping here hovered whatever the real cursor was over
+        local mx = math.floor(hover.x + hover.w / 2)
+        local my = math.floor(hover.y + hover.h / 2)
+        draw.set_pointer({ x = mx, y = my })
         local under = draw.editor_tool_at(mx, my, e.palette)
         assert(under == "umbrella",
             "the pointer on the umbrella tile answered " .. tostring(under))
         print("PALETTE HOVER -> UMBRELLA")
     elseif smoke.frames == 33 then
         love.graphics.captureScreenshot("smoke-editor-palette.png")
-        love.mouse.setPosition(0, 0)
     elseif smoke.frames >= 34 then
+        draw.set_pointer(nil)
         print("SMOKE OK")
         love.event.quit(0)
     end

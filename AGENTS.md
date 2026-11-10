@@ -14,7 +14,11 @@ Guidelines for agents working on this codebase.
 love .                                   # play (starts on the level select)
 love tests                               # headless suite, exit 0 = green
 love . --smoke                           # render every screen once, print SMOKE OK, exit 0
-xvfb-run -a -s "-screen 0 1280x720x24" timeout 30 love . --smoke   # same, headless box
+xvfb-run -a -s "-screen 0 1600x900x24" timeout 30 love . --smoke   # same, headless box
+
+# 1600x900, not 1280x720: the window is clamped to the desktop minus a margin for
+# decorations, so a screen exactly the window size would capture at 1200x600 (the
+# compact rail) instead of the shipped 1280x720.
 love . --audit 4                         # can level 4 be parked? (a row number or an id) exit 0 = a line exists
 love . --audit all                       # every level (~25 s each, full grid only)
 love . --edit                            # the level editor (see README)
@@ -53,6 +57,13 @@ handler is an interactive loop, so a draw-time error sits there until something
 kills it and a `timeout` reports 124 instead of a failure. `--smoke` installs its
 own `love.errorhandler` that prints the traceback and exits 1, so trust the exit
 code and read the log.
+
+**A smoke frame must inject what a user does with the mouse, not warp the cursor.**
+Wayland clients cannot move the pointer (SDL has no warp there, so
+`love.mouse.setPosition` is a silent no-op) and a frame that hovered a tile by
+warping hovered nothing at all — it passed on X11 and failed on KWin. The view
+takes the pointer through `draw.set_pointer`, exactly like `input.get_joysticks`
+takes the pads; `nil` means the real mouse.
 
 `--smoke` is the real render check: it draws a scene frame, the result card in
 its three states (slower than the record, a new best, a void attempt) and a
