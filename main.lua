@@ -288,6 +288,10 @@ end
 local function editor_autosave_now()
     local e = game.editor
     if not e or not editor_dirty() then return end
+    -- Never under --smoke: a failing run quits from a document its frames had
+    -- been editing, and the recovery file it wrote was then restored into the
+    -- NEXT run -- so one real failure poisoned every run after it.
+    if smoke.enabled then return end
     editor_autosave(e.origin_id or e.doc.level.id, doc.snapshot(e.doc), true)
 end
 
@@ -434,6 +438,28 @@ local function editor_verify()
     end
 end
 
+-- What the selection points at, or nil. Three gestures need this and none of
+-- them may invent their own idea of what "selected" means.
+local function editor_selected_entry(d)
+    local sel = d.doc.selection
+    if not sel then return nil end
+    if sel.list == "bay" or sel.list == "spawn" then return d.doc.level[sel.list] end
+    return (d.doc.level[sel.list] or {})[sel.index]
+end
+
+-- Arm a tool. Placing is a promise to add something, so it drops any selection:
+-- "the thing I just placed stays selected" is only true if the thing you were
+-- editing before did not. Esc from here lands on the last placement -- or on
+-- nothing, if you placed nothing.
+local function editor_arm(name)
+    local e = game.editor
+    e.tool = name
+    if name ~= "select" then
+        doc.deselect(e.doc)
+        say(name .. ": click the yard to place it", 3)
+    end
+end
+
 local function editor_keypressed(key)
     local e = game.editor
     local ctrl = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
@@ -470,10 +496,10 @@ local function editor_keypressed(key)
         return
     end
 
-    -- An armed tool is a pending placement, not a reason to leave: Esc drops back
-    -- to `select` so the thing you just put down can be dragged, turned or
-    -- resized. A second Esc (or one with `select` already active) goes back to the
-    -- level select as before.
+    -- Esc walks back out one step at a time, and each step is what the player
+    -- can see: an armed tool becomes `select` (the last placement is still
+    -- selected, ready to drag, turn or resize); a selection drops; only with
+    -- nothing armed and nothing selected does Esc mean "leave the editor".
     if key == "escape" and e.tool ~= "select" then
         e.tool = "select"
         if e.doc.selection then
@@ -481,6 +507,12 @@ local function editor_keypressed(key)
         else
             say("select: click a prop to adjust it", 4)
         end
+        return
+    end
+
+    if key == "escape" and e.doc.selection then
+        doc.deselect(e.doc)
+        say("selection cleared", 3)
         return
     end
 
@@ -501,7 +533,7 @@ local function editor_keypressed(key)
         local i = 1
         for j, name in ipairs(e.tool_order) do if name == e.tool then i = j end end
         i = ((i - 1 + (key == "rightbracket" and 1 or -1)) % n) + 1
-        e.tool = e.tool_order[i]
+        editor_arm(e.tool_order[i])
     elseif ctrl and key == "z" then
         local text = undo.back(e.undo)
         if text then
@@ -549,10 +581,7 @@ local function editor_mousepressed(x, y, button)
 
     if x <= draw.RAIL and button == 1 then
         local tool = draw.editor_tool_at(x, y, e.palette)
-        if tool then
-            e.tool = tool
-            if tool ~= "select" then say(tool .. ": click the yard to place it", 3) end
-        end
+        if tool then editor_arm(tool) end
         return
     end
 
@@ -578,11 +607,19 @@ local function editor_mousepressed(x, y, button)
             end
         end
 
-        local sel = doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
-        local entry = sel and (sel.list == "bay" or sel.list == "spawn")
-            and e.doc.level[sel.list] or (sel and (e.doc.level[sel.list] or {})[sel.index])
-        if entry then
+        -- Only the selection is grabbable. Dragging whatever sits under the
+        -- cursor sounds convenient until a level is dressed: then the whole yard
+        -- is one surface, the map cannot be panned anywhere, and a slip moves
+        -- the ground itself. The selection's own outline says what a drag will
+        -- move; anything else starts a pan, and a press that never travels is
+        -- still a click (it picks on release).
+        local hit = doc.hit(e.doc, wx, wy, 0.4 / e.cam.scale)
+        local sel = e.doc.selection
+        local entry = editor_selected_entry(e)
+        if hit and sel and hit.list == sel.list and (hit.index or 0) == (sel.index or 0) and entry then
             e.drag = { px = x, py = y, wx = wx, wy = wy, ox = entry.x, oy = entry.y }
+        else
+            e.pan = { x = x, y = y, cx = e.cam.x, cy = e.cam.y, click = { wx = wx, wy = wy } }
         end
     elseif e.tool == "bay" or e.tool == "spawn" then
         -- place, then keep it selected: the next thing you want is usually a drag
@@ -617,9 +654,7 @@ local function editor_mousemoved(x, y, dx, dy)
         if not_dragged(e.resizing) then return end
         -- The corner opposite the grab stays put: the drag sizes the prop away
         -- from the edge you already lined up, which is how a gap gets filled.
-        local sel = e.doc.selection
-        local entry = sel and ((sel.list == "bay" or sel.list == "spawn")
-            and e.doc.level[sel.list] or (e.doc.level[sel.list] or {})[sel.index])
+        local entry = editor_selected_entry(e)
         if not entry then return end
         local w0, h0, x0, y0 = entry.w, entry.h, entry.x, entry.y
         local wx, wy = editor_to_world(x, y)
@@ -631,6 +666,14 @@ local function editor_mousemoved(x, y, dx, dy)
     end
 
     if e.pan then
+        -- A wobble is not a pan: below the slop the press is still a click, and a
+        -- hand that moved 1 px should not have shifted the map under it.
+        if e.pan.click and not e.pan.moved then
+            if math.abs(x - e.pan.x) < DRAG_SLOP and math.abs(y - e.pan.y) < DRAG_SLOP then
+                return
+            end
+            e.pan.moved = true
+        end
         e.cam.x = e.pan.cx - (x - e.pan.x) / e.cam.scale
         e.cam.y = e.pan.cy + (y - e.pan.y) / e.cam.scale
         return
@@ -638,9 +681,7 @@ local function editor_mousemoved(x, y, dx, dy)
     if e.drag then
         if not_dragged(e.drag) then return end
         local wx, wy = editor_to_world(x, y)
-        local sel = e.doc.selection
-        local entry = sel and ((sel.list == "bay" or sel.list == "spawn")
-            and e.doc.level[sel.list] or (e.doc.level[sel.list] or {})[sel.index])
+        local entry = editor_selected_entry(e)
         if not entry then return end
         local nx = snap(e.drag.ox + (wx - e.drag.wx), e.snap)
         local ny = snap(e.drag.oy + (wy - e.drag.wy), e.snap)
@@ -658,6 +699,13 @@ end
 
 local function editor_mousereleased(x, y, button)
     local e = game.editor
+    -- A press that never travelled is a click, and a click is what selects (or
+    -- clears): selection cannot happen on the way down any more, because the way
+    -- down may be the start of a pan.
+    if e.pan and e.pan.click and not e.pan.moved then
+        local wx, wy = editor_to_world(x, y)
+        doc.pick(e.doc, wx, wy, 0.4 / e.cam.scale)
+    end
     e.pan = nil
     e.drag = nil
     e.resizing = nil
@@ -1157,6 +1205,9 @@ local function smoke_step()
         local ox, oy = off_grid.x, off_grid.y
         local px = W / 2 + (ox - e.cam.x) * e.cam.scale
         local py = H / 2 - (oy - e.cam.y) * e.cam.scale
+        -- the corner test just left a wall selected, and a handle is grabbable
+        -- anywhere within 9 px of it: drop it so this click is a click
+        doc.deselect(e.doc)
         local dirty_before_click = editor_dirty()
         editor_mousepressed(px, py, 1)
         editor_mousemoved(px + 1, py, 0, 0)     -- a hand wobble, not a drag
@@ -1206,6 +1257,48 @@ local function smoke_step()
             "the drag changed nothing, so the pin was never exercised")
         print(string.format("EDITOR DRAG pinned (%.3f, %.3f), wall now %.2f x %.2f",
             still.x, still.y, props.footprint(free_wall).w, props.footprint(free_wall).h))
+
+        -- Esc walks back out one step at a time. Arming a tool drops the previous
+        -- selection, so Esc can honestly land on the last placement -- or on
+        -- nothing, if nothing was placed.
+        editor_arm("cone")
+        assert(e.doc.selection == nil, "arming a placement tool must clear the selection")
+        editor_keypressed("escape")
+        assert(e.tool == "select", "Esc with a tool armed must go back to select")
+        assert(e.doc.selection == nil, "and leave nothing selected when nothing was placed")
+
+        editor_arm("cone")
+        local place_x, place_y = e.doc.level.spawn.x + 4, e.doc.level.spawn.y + 4
+        editor_mousepressed(W / 2 + (place_x - e.cam.x) * e.cam.scale,
+                            H / 2 - (place_y - e.cam.y) * e.cam.scale, 1)
+        local placed = e.doc.selection
+        assert(placed and placed.list == "cones", "placing must select what it placed")
+        editor_keypressed("escape")
+        assert(e.tool == "select", "Esc with a tool armed must go back to select")
+        assert(e.doc.selection == placed, "and keep the last placement selected for editing")
+        editor_keypressed("escape")
+        assert(e.doc.selection == nil, "Esc with a selection must clear it")
+        assert(game.mode == MODE.editor, "clearing a selection must not leave the editor")
+        print("EDITOR ESC LADDER")
+
+        -- the placed cone was a fixture: take it back out of the picture
+        e.doc.selection = placed
+        doc.remove(e.doc)
+        editor_errors()
+
+        -- Left-drag on the map pans it. The click test above is the other half:
+        -- a press that never travels still picks. A drag must also not edit.
+        local camx, camy = e.cam.x, e.cam.y
+        local before_pan = doc.snapshot(e.doc)
+        local gx, gy = W * 0.62, H * 0.7
+        editor_mousepressed(gx, gy, 1)
+        editor_mousemoved(gx + 60, gy, 0, 0)
+        editor_mousereleased(gx + 60, gy, 1)
+        assert(math.abs(e.cam.x - camx) > 1,
+            string.format("a 60 px drag on the map must pan it, the camera stayed at %.3f", e.cam.x))
+        assert(doc.snapshot(e.doc) == before_pan, "panning the map must not edit the document")
+        e.cam.x, e.cam.y = camx, camy
+        print("EDITOR DRAG PANS THE MAP")
 
         -- the frame itself: a tool armed, the new kinds placed, a wall selected
         e.tool = "hedge"

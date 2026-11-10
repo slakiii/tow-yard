@@ -88,7 +88,7 @@ in `main.lua` -- `E`, `N` and `--edit` stop working (and `--smoke` draws the
 editor, so its editor frames need removing in that build).
 
 Only structural things stretch: buildings, tents, pools, decking, gravel, grass,
-water, the bay, and hedges (length only). A car, a motorhome, a chair, a cone, a
+the bay, and hedges (length only). A car, a motorhome, a chair, a cone, a
 fire pit, a picnic table, a beach umbrella and the spawn have one real size and
 offer no handles -- stretching them is not authoring, it is distorting.
 
@@ -98,9 +98,10 @@ offer no handles -- stretching them is not authoring, it is distorting.
 | hover a tile | a tooltip names it, gives its footprint and says whether it stretches |
 | wheel | zoom (6-40 px/m, around the cursor) |
 | right / middle drag | pan |
-| click | place the active prop (0.5 m snap), or select with `select` |
+| left drag | pan as well, unless the drag starts on the selection |
+| click | place the active prop (0.5 m snap), or select with `select` (a click selects, a drag pans) |
 | — | with a tool picked, a faint preview follows the cursor; clicking puts it down |
-| drag | move the selection (props, the bay and the spawn alike) |
+| drag the selection | move it (props, the bay and the spawn alike) |
 
 | Key | |
 |---|---|
@@ -116,7 +117,7 @@ offer no handles -- stretching them is not authoring, it is distorting.
 | `S` | save to `custom/` (a shipped level's id becomes `<id>-copy`) |
 | `L` | copy a `lib/levels.lua` entry to the clipboard, and write it to `<save dir>/drafts/<id>.lua` |
 | `O` | copy the level as a share code |
-| `Esc` | back to the `select` tool if one is armed (the thing you just placed stays selected); otherwise back to the level select, asking first if there are unsaved changes |
+| `Esc` | back out one step: an armed tool becomes `select` (the last thing you placed is left selected, or nothing if you placed nothing); with `select` active it clears the selection; with nothing selected it goes back to the level select, asking first if there are unsaved changes |
 
 Gamepad (any pad LÖVE recognises as a gamepad; hot-plug works): left stick or
 `D-pad` to steer, `RT` forward, `LT` brake then reverse, `A` handbrake,

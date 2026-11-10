@@ -14,6 +14,8 @@ local M = { order = {
     "a_document_does_not_mutate_its_level",
     "add_files_each_kind_where_it_belongs",
     "pick_finds_what_is_under_the_cursor",
+    "asking_what_is_under_the_cursor_does_not_select_it",
+    "deselect_clears_the_selection_only",
     "move_and_rotate_touch_only_the_selection",
     "resize_starts_from_the_default_size",
     "things_with_one_size_refuse_to_stretch",
@@ -66,6 +68,40 @@ function M.pick_finds_what_is_under_the_cursor()
     H.expect(doc.pick(d, 30, 30, 0.2).list == "cones", "the cone is under the cursor")
     H.expect(doc.pick(d, 55, 35, 0.2) == nil, "empty ground clears the selection")
     H.expect(d.selection == nil, "and leaves nothing selected")
+end
+
+function M.asking_what_is_under_the_cursor_does_not_select_it()
+    -- A press has to know whether it landed on the selection before it decides
+    -- between dragging the prop and panning the map. `pick` cannot answer that:
+    -- it answers by selecting, so merely asking would move the selection out
+    -- from under the gesture.
+    local d = doc.blank("test-hit")
+    doc.add(d, "building", 10, 10)
+    doc.add(d, "cone", 30, 30)
+    d.selection = nil
+
+    local hit = doc.hit(d, 10, 10, 0.2)
+    H.expect(hit and hit.list == "walls" and hit.index == 1, "the building is under the cursor")
+    H.expect(d.selection == nil, "asking must not select anything")
+    H.expect(doc.hit(d, 30, 30, 0.2).list == "cones", "the cone is under the cursor")
+    H.expect(doc.hit(d, 55, 35, 0.2) == nil, "empty ground is nothing")
+    H.expect(d.selection == nil, "and still nothing is selected")
+
+    -- and the answer is the same selection `pick` would make
+    local p = doc.pick(d, 30, 30, 0.2)
+    H.expect(p.list == "cones" and p.index == 1, "pick agrees with hit")
+end
+
+function M.deselect_clears_the_selection_only()
+    local d = doc.blank("test-deselect")
+    doc.add(d, "tent", 10, 10)
+    local before = doc.snapshot(d)
+    H.expect(d.selection ~= nil, "fixture: adding selects the new prop")
+
+    H.expect(doc.deselect(d) == nil, "deselect says there is nothing selected any more")
+    H.expect(d.selection == nil, "nothing stays selected")
+    H.expect(doc.snapshot(d) == before, "clearing a selection is not an edit")
+    H.expect(doc.deselect(d) == nil, "clearing twice is not a crash")
 end
 
 function M.move_and_rotate_touch_only_the_selection()

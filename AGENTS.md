@@ -120,7 +120,12 @@ debug frame, writes screenshots to the LÖVE save directory, then quits 0. A `ti
   and `props.SURFACES`, order from `props.PALETTE` -- never a literal list in
   the shell: a kind missing from a hand-kept list is a kind nobody can place),
   and `lib/edit/doc.lua` +
-  `lib/edit/undo.lua` are the editor's document and its snapshot stack. The
+  `lib/edit/undo.lua` are the editor's document and its snapshot stack. Two
+  editor rules live in the shell because they are gestures, not edits: arming a
+  tool drops the selection (so Esc can land on the last placement, or on
+  nothing), and a drag only moves the SELECTION -- anywhere else it pans, since
+  a dressed level is one surface and "drag what is under the cursor" would make
+  the map un-pannable and the ground one slip away from moving. The
   `lib/edit/autosave.lua` writes the open document to `drafts/` every two seconds
   and on exit, over the injected disk; the editor's view draws AUTHORED data, not the resolved level: the file is what
   you are editing, so what it says is what you should see.

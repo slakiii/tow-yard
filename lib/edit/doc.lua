@@ -163,7 +163,11 @@ end
 
 -- Topmost first: cones and walls are things you point at, paint is ground, and
 -- within a list the last one drawn is the one on top.
-function M.pick(doc, x, y, tol)
+-- What is under the cursor, WITHOUT selecting it. A press has to tell "on my
+-- selection" (drag the prop) from "anywhere else" (pan the map) before it
+-- decides, and `pick` answers by selecting -- so asking would move the
+-- selection out from under the gesture.
+function M.hit(doc, x, y, tol)
     tol = tol or 0.3
     local lvl = M.level(doc)
     local spawn = lvl.spawn
@@ -171,16 +175,14 @@ function M.pick(doc, x, y, tol)
     for i = #lvl.cones, 1, -1 do
         local c = lvl.cones[i]
         if (c.x - x) ^ 2 + (c.y - y) ^ 2 <= (c.r + tol) ^ 2 then
-            doc.selection = { list = "cones", index = i }
-            return doc.selection
+            return { list = "cones", index = i }
         end
     end
 
     for i = #lvl.walls, 1, -1 do
         local w = lvl.walls[i]
         if geom.point_in_poly(x, y, geom.rect_poly(w.x, w.y, w.w, w.h, w.angle or 0)) then
-            doc.selection = { list = "walls", index = i }
-            return doc.selection
+            return { list = "walls", index = i }
         end
     end
 
@@ -188,12 +190,10 @@ function M.pick(doc, x, y, tol)
     -- yard with surfaces, so while surfaces were picked first, the bay was
     -- unpickable on every real level -- which is exactly how it felt.
     if (spawn.x - x) ^ 2 + (spawn.y - y) ^ 2 <= (1.2 + tol) ^ 2 then
-        doc.selection = { list = "spawn" }
-        return doc.selection
+        return { list = "spawn" }
     end
     if geom.point_in_poly(x, y, geom.rect_poly(lvl.bay.x, lvl.bay.y, lvl.bay.w, lvl.bay.h, lvl.bay.angle)) then
-        doc.selection = { list = "bay" }
-        return doc.selection
+        return { list = "bay" }
     end
 
     -- paint last: it is ground, it is huge, and it is almost never the thing you
@@ -201,16 +201,28 @@ function M.pick(doc, x, y, tol)
     for i = #lvl.surfaces, 1, -1 do
         local s = lvl.surfaces[i]
         if geom.point_in_poly(x, y, geom.rect_poly(s.x, s.y, s.w, s.h, s.angle or 0)) then
-            doc.selection = { list = "surfaces", index = i }
-            return doc.selection
+            return { list = "surfaces", index = i }
         end
     end
 
     -- and the props still win, because they are small and sit on top
+    return nil
+end
 
+-- Pick: the selection becomes what is under the cursor (or nothing).
+function M.pick(doc, x, y, tol)
+    doc.selection = M.hit(doc, x, y, tol)
+    return doc.selection
+end
+
+-- Drop the selection without touching the document: what Esc does in select
+-- mode, and what arming a placement tool does so the next Esc has something
+-- honest to say about what you just put down.
+function M.deselect(doc)
     doc.selection = nil
     return nil
 end
+
 
 function M.move(doc, dx, dy)
     local entry = selected(doc)
