@@ -845,6 +845,9 @@ local WINDOW_MARGIN_X, WINDOW_MARGIN_Y = 80, 120
 -- and stops for good as soon as the size is the one we want, so a compositor that
 -- honoured the first request sees exactly one comparison and no second setMode.
 local WINDOW_MARGIN_X, WINDOW_MARGIN_Y = 80, 120
+-- The floor the min-size hint used to provide: a window smaller than this cannot
+-- hold the rail and a yard, and the rail's compact layout starts at 640 px high.
+local MIN_W, MIN_H = 900, 560
 local WINDOW_ATTEMPTS = 3          -- then accept it: a tiling WM may mean it
 local window_attempts, window_settled, window_frames = 0, false, 0
 
@@ -853,8 +856,27 @@ local function want_window_size()
     -- before the display is configured this is 0x0; ask for the conf size rather
     -- than clamp to a screen we cannot see yet, and let the frames below retry
     if not dw or dw <= 0 or not dh or dh <= 0 then return 1280, 720 end
-    return math.min(1280, math.max(900, dw - WINDOW_MARGIN_X)),
-           math.min(720, math.max(560, dh - WINDOW_MARGIN_Y))
+    return math.min(1280, math.max(MIN_W, dw - WINDOW_MARGIN_X)),
+           math.min(720, math.max(MIN_H, dh - WINDOW_MARGIN_Y))
+end
+
+local resize_guard, last_clamp = false, -10
+
+-- Called from love.resize at the bottom of the file, where the camera also reacts:
+-- a second `function love.resize` here would simply be shadowed by that one.
+local function clamp_window_floor(w, h)
+    -- A compositor that refuses the clamp would otherwise get a new request on
+    -- every resize event it sends back: one clamp per half second is enough to
+    -- hold the floor and cannot spin.
+    if resize_guard or love.timer.getTime() - last_clamp < 0.5 then return end
+    local ww, wh = math.max(MIN_W, w), math.max(MIN_H, h)
+    if ww == w and wh == h then return end
+    resize_guard = true
+    last_clamp = love.timer.getTime()
+    local _, _, flags = love.window.getMode()
+    flags.minwidth, flags.minheight = nil, nil       -- never hand the hint back
+    love.window.setMode(ww, wh, flags)
+    resize_guard = false
 end
 
 local function fix_window_size(why)
@@ -1641,7 +1663,8 @@ local function play_keypressed(key)
     end
 end
 
-function love.resize()
+function love.resize(w, h)
+    clamp_window_floor(w, h)
     game.scale, game.ox, game.oy = camera(game.level)
 end
 
