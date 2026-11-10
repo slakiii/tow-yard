@@ -603,11 +603,15 @@ function D.hud(s, game)
     set(D.C.dim)
     love.graphics.print(string.format("wheels %.0f %s", deg, side), gx, by - 22)
 
-    -- control hints
+    -- control hints. The arc ships off, so the hint names its state -- otherwise
+    -- the toggle is a key the player has no reason to press.
     local pad = game.input and game.input.last_device == "gamepad"
+    local guide_state = game.guide and "guide on" or "guide off"
     local hint = pad
-        and "LS/D-pad steer   RT forward   LT brake/reverse   A handbrake   Y guide   B reset   Start pause"
-        or "WASD drive   Space handbrake   G guide   R reset   P pause   F1 debug   M sound   Esc menu"
+        and "LS/D-pad steer   RT forward   LT brake/reverse   A handbrake   Y " .. guide_state
+        .. "   B reset   Start pause"
+        or "WASD drive   Space handbrake   G " .. guide_state
+        .. "   R reset   P pause   F1 debug   M sound   Esc menu"
     set(D.C.dim, 0.9)
     love.graphics.print(hint, 24, H - 26)
 

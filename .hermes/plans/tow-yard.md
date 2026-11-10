@@ -91,13 +91,17 @@ Deliberate choices:
 - **Rumble reports articulation** from 45° to the 72° limit. Real drivers feel
   the trailer through the seat; this is the only channel that approximates it,
   and it is the strongest reason to play with a pad.
-- **The guide arc** (predicted caravan path, 10 s horizon) is the assist switch.
-  It is a **reverse assist**: visible at rest and in reverse, hidden while the
-  gear reads D. The same 10 s horizon that covers ~18 m at `vrev` covers ~90 m
-  at `vmax` — longer than the 60x40 m yard — so forward it stops predicting and
-  just smears dots over the scene. Forward motion is stable; the arc's job is
-  the unstable one. The stationary arc still previews the reverse, which is the
-  "set your angle up before you arrive" readout this game is built around.
+- **The guide arc** (predicted caravan path, 10 s horizon) is the assist switch,
+  **off by default** — `G` (pad `Y`) turns it on, and the HUD hint names its
+  current state so the key is discoverable. A first park should be the player's
+  own line; the arc is the one thing on screen that says where the caravan will
+  go, so it is an opt-in. It is a **reverse assist**: visible at rest and in
+  reverse, hidden while the gear reads D. The same 10 s horizon that covers
+  ~18 m at `vrev` covers ~90 m at `vmax` — longer than the 60x40 m yard — so
+  forward it stops predicting and just smears dots over the scene. Forward
+  motion is stable; the arc's job is the unstable one. The stationary arc still
+  previews the reverse, which is the "set your angle up before you arrive"
+  readout this game is built around.
 
 ## 5. Level design rules
 
@@ -158,7 +162,8 @@ next test to write, and par times must come from playtests, not arithmetic.
 
 1. Core loop: reversing puzzle (current) vs. delivery drive across a map?
 2. Does the caravan ever detach? One extra step, one whole extra mechanic.
-3. Guide arc default: on for everyone, or only in an easy mode?
+3. Guide arc default: **settled — off**, `G`/`Y` opts in. (It was on; a default-on
+   assist plays the manoeuvre for a first-time player.)
 4. Target: local LÖVE build now, itch.io web later? love.js rules out FFI and
    shared-library modules but this project uses neither.
 

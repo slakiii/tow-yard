@@ -58,7 +58,10 @@ local DRAG_SLOP = 3
 
 local game = {
     mode = MODE.menu,
-    guide = true,
+    -- Off by default: the arc is an assist, and it hands the manoeuvre away --
+    -- it is the one thing on screen that says where the caravan will go, so a
+    -- first park should be the player's own line. G / Y turns it on.
+    guide = false,
     debug = false,
     paused = false,
     acc = 0,
@@ -982,10 +985,16 @@ end
 local function smoke_step()
     smoke.frames = smoke.frames + 1
     if smoke.frames == 1 then
+        -- The arc ships OFF. Assert it, then turn it on: smoke-scene.png is the
+        -- shipped state (no dots), and every frame after it covers the arc's
+        -- draw path. Without the assert, a default flipped back on would pass.
+        assert(game.guide == false, "the guide arc must ship off by default")
         love.graphics.captureScreenshot("smoke-scene.png")
         print("SAVE DIR " .. love.filesystem.getSaveDirectory())
+        game.guide = true
     elseif smoke.frames == 2 then
         -- full lock: the frame that has to show steered wheels and rays
+        -- (and, since frame 1 turned the arc on, the curved reverse arc)
         -- frozen, or the steering ramp unwinds by however many steps this frame
         -- happens to run: the capture lands AFTER the next update, so the pose
         -- depended on wall-clock timing (and on how long boot took)
@@ -1039,7 +1048,10 @@ local function smoke_step()
         love.graphics.captureScreenshot("smoke-paused.png")
     elseif smoke.frames == 9 then
         -- driving forward: the guide arc must be absent (it is a reverse assist;
-        -- forward it spanned the whole yard). Compare with smoke-scene.png.
+        -- forward it spanned the whole yard). Compare with smoke-steer.png, which
+        -- is the same level at rest with the arc ON -- so the toggle has to be on
+        -- here too, or this frame proves nothing.
+        assert(game.guide, "the forward frame must run with the arc enabled")
         game.paused = false
         load_level(1)
         smoke.frozen = true
