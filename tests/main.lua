@@ -23,6 +23,7 @@ local MODULES = {
     "tests/test_input_pad",
     "tests/test_edit_undo",
     "tests/test_edit_autosave",
+    "tests/test_edit_palette",
 }
 
 local function runModule(name)

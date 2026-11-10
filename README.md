@@ -94,7 +94,8 @@ offer no handles -- stretching them is not authoring, it is distorting.
 
 | Mouse | |
 |---|---|
-| click the rail | pick a tool (the name in the rail is the level's; `F2` renames it) |
+| click a tile in the rail | pick a tool; the rail groups the kinds by what they are (`TOOL`, `LEVEL`, then `STRUCTURES`, `CAMP`, `GROUND`) |
+| hover a tile | a tooltip names it, gives its footprint and says whether it stretches |
 | wheel | zoom (6-40 px/m, around the cursor) |
 | right / middle drag | pan |
 | click | place the active prop (0.5 m snap), or select with `select` |
@@ -163,6 +164,7 @@ Plans live in `.hermes/plans/`:
 | `lib/run.lua` | record / serialise / replay / verify a run (pure) |
 | `lib/share.lua` | share bundles and `TY1:` codes (pure) |
 | `lib/edit/doc.lua` | the editor's document and its edits (pure) |
+| `lib/edit/palette.lua` | the rail's groups and order, derived from the vocabulary (pure) |
 | `lib/edit/undo.lua` | snapshot undo (pure) |
 | `lib/codec.lua` | zlib + base64 over love.data, passed into the format |
 | `lib/audit.lua` | level winnability probe, run with `love . --audit N` (pure) |

@@ -42,6 +42,10 @@ function D.init()
     fonts.big = love.graphics.newFont(34)
     fonts.mid = love.graphics.newFont(19)
     fonts.small = love.graphics.newFont(14)
+    -- group headings and the name under a palette tile: the rail has 46 px to
+    -- spend per tile and the 14 px font spends most of it
+    fonts.tiny = love.graphics.newFont(10)
+    fonts.micro = love.graphics.newFont(8)
 end
 
 local function set(c, a)
@@ -1018,18 +1022,206 @@ function D.editor_world(doc, state)
 end
 
 -- The rails: what is selected, what is wrong, and every key that does something.
--- Text rather than icons, because the editor is a dev tool first and an icon
--- toolkit is a week of work for a screen four people will use.
+-- The palette is a grouped icon grid (lib/edit/palette.lua is its data), because
+-- 17 rows of text is a wall nobody reads and a tooltip can carry the words.
 D.RAIL = 232            -- width of the tool rail, in pixels
-local TOOL_Y, TOOL_ROW = 156, 22
+local TOOL_Y = 156
+
+-- Two tile sizes. At the 560 px minimum window height the grid plus the panels
+-- under it does not fit, so the whole rail steps down and the selection and
+-- error blocks fold onto one line -- the alternative is hints pushed off-screen.
+local TILE = { w = 46, h = 48, gap = 5, head = 16, chip = 26, pad = 10, cols = 4 }
+local TILE_SHORT = { w = 42, h = 42, gap = 4, head = 14, chip = 22, pad = 10, cols = 4 }
+
+-- Where every tile and heading sits, from the palette data. The view and the
+-- click handler both call this: a click that landed on a different tile than
+-- the one drawn would place a clubhouse where the player clicked "cone".
+function D.palette_layout(groups, W, H)
+    local compact = (H or 720) < 640
+    local m = compact and TILE_SHORT or TILE
+    local avail = D.RAIL - m.pad * 2
+    local col_w = (avail - m.gap * (m.cols - 1)) / m.cols
+    local tiles, headers = {}, {}
+    local y = TOOL_Y
+    for _, group in ipairs(groups or {}) do
+        headers[#headers + 1] = { label = group.label, x = m.pad, y = y }
+        y = y + m.head
+        if group.id == "ground" then
+            -- a surface is a colour, not an object: one strip of chips, not a grid
+            local n = math.max(1, #group.items)
+            local w = (avail - m.gap * (n - 1)) / n
+            for i, item in ipairs(group.items) do
+                tiles[#tiles + 1] = { item = item, chip = true, h = m.chip,
+                                      x = m.pad + (i - 1) * (w + m.gap), y = y, w = w }
+            end
+            y = y + m.chip
+        else
+            for i, item in ipairs(group.items) do
+                local col = (i - 1) % m.cols
+                local row = math.floor((i - 1) / m.cols)
+                tiles[#tiles + 1] = { item = item, h = m.h, w = col_w,
+                                      x = m.pad + col * (col_w + m.gap),
+                                      y = y + row * (m.h + m.gap) }
+            end
+            local rows = math.ceil(#group.items / m.cols)
+            y = y + rows * m.h + (rows - 1) * m.gap
+        end
+        y = y + (compact and 4 or 7)
+    end
+    return { tiles = tiles, headers = headers, bottom = y, compact = compact }
+end
 
 -- Which tool is under the cursor. The rail is clickable because telling somebody
 -- to cycle a palette with [ and ] is not telling them how to add a prop: the
 -- first thing three people asked was "how do I put something down".
-function D.editor_tool_at(x, y, palette)
-    if x > D.RAIL or y < TOOL_Y then return nil end
-    local i = math.floor((y - TOOL_Y) / TOOL_ROW) + 1
-    return (palette or {})[i]
+function D.editor_tool_at(x, y, groups, W, H)
+    if x > D.RAIL then return nil end
+    if not W or not H then W, H = love.graphics.getDimensions() end
+    for _, t in ipairs(D.palette_layout(groups, W, H).tiles) do
+        if x >= t.x and x <= t.x + t.w and y >= t.y and y <= t.y + t.h then
+            return t.item.tool or t.item.kind
+        end
+    end
+    return nil
+end
+
+-- Tile art. The yard draws these shapes at 15 px/m; the rail draws them at ~2 px
+-- per metre, where four of them stop reading (a chair's circle, a tent's box,
+-- and the same flat brown rectangle for gravel and for decking). These are the
+-- tile-only versions: same silhouette, the naming cue exaggerated.
+local ICON_ART = {}
+
+ICON_ART.chair = function(x, y, ang, fp, a)
+    local r = fp.r
+    set(shade(fp.colour, 0.35), a)
+    for _, sx in ipairs({ -0.62, 0.62 }) do
+        for _, sy in ipairs({ -0.62, 0.62 }) do
+            local qx, qy = at(x, y, ang, sx * r, sy * r)
+            love.graphics.circle("fill", qx, qy, r * 0.22)
+        end
+    end
+    box_fill(x, y, ang, 0, 0, r * 1.25, r * 1.25, fp.colour, a)
+    box_fill(x, y, ang, -r * 0.70, 0, r * 0.34, r * 1.55, shade(fp.colour, 1.6), a)
+end
+
+ICON_ART.tent = function(x, y, ang, fp, a)
+    box_fill(x, y, ang, 0, fp.h * 0.24, fp.w, fp.h * 0.48, shade(fp.colour, 1.34), a)
+    box_fill(x, y, ang, 0, -fp.h * 0.24, fp.w, fp.h * 0.48, shade(fp.colour, 0.70), a)
+    ridge(x, y, ang, -fp.w / 2, fp.w / 2, shade(fp.colour, 2.0), a)
+    box_fill(x, y, ang, fp.w * 0.38, 0, 0.9, fp.h * 0.36, { 0.10, 0.09, 0.08 }, a)
+end
+
+-- Surfaces: the tile carries the texture the ground itself draws, or gravel,
+-- decking and water are one grey-brown chip between them.
+local SURFACE_TILE = {}
+
+SURFACE_TILE.deck = function(x, y, w, h, c)
+    set(shade(c, 1.55), 0.5)
+    love.graphics.setLineWidth(1)
+    for i = 1, 4 do
+        local yy = y + h * (i / 5)
+        love.graphics.line(x + 2, yy, x + w - 2, yy)
+    end
+end
+
+SURFACE_TILE.gravel = function(x, y, w, h, c)
+    for i = 1, 10 do
+        local gx = x + 2 + (w - 4) * (((i * 37) % 11) / 11)
+        local gy = y + 2 + (h - 4) * (((i * 53) % 7) / 7)
+        set(shade(c, (i % 2 == 0) and 1.75 or 0.6), 0.9)
+        love.graphics.circle("fill", gx, gy, 1.2)
+    end
+end
+
+SURFACE_TILE.grass = function(x, y, w, h, c)
+    set(shade(c, 1.8), 0.65)
+    love.graphics.setLineWidth(1)
+    for i = 1, 8 do
+        local gx = x + 2 + (w - 4) * (i / 8)
+        love.graphics.line(gx, y + h - 2, gx + 2, y + h * 0.35)
+    end
+end
+
+SURFACE_TILE.water = function(x, y, w, h, c)
+    set(shade(c, 1.7), 0.5)
+    love.graphics.setLineWidth(1)
+    for i = 1, 3 do
+        local yy = y + h * (i / 4)
+        love.graphics.line(x + 2, yy, x + w - 2, yy)
+    end
+end
+
+-- The rail's own two tools and the spawn marker are not prop kinds, so they are
+-- drawn here rather than by props' art.
+local TOOL_ICON = {}
+
+TOOL_ICON.select = function(x, y, w, h)
+    local cx, cy = x + w / 2, y + h / 2
+    local s = math.min(w, h) / 30
+    set(D.C.text, 0.95)
+    love.graphics.polygon("fill",
+        cx - 5 * s, cy - 9 * s, cx - 5 * s, cy + 8 * s, cx - 1 * s, cy + 4 * s,
+        cx + 2 * s, cy + 10 * s, cx + 5 * s, cy + 8 * s, cx + 2 * s, cy + 2 * s,
+        cx + 7 * s, cy + 1 * s)
+end
+
+TOOL_ICON.bay = function(x, y, w, h)
+    local cx, cy = x + w / 2, y + h / 2
+    local bw, bh = w * 0.66, h * 0.52
+    set(D.C.bay_line, 0.18)
+    love.graphics.rectangle("fill", cx - bw / 2, cy - bh / 2, bw, bh, 2)
+    set(D.C.bay_line, 0.95)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", cx - bw / 2, cy - bh / 2, bw, bh, 2)
+    love.graphics.setLineWidth(1)
+    love.graphics.line(cx - bw * 0.34, cy, cx - bw * 0.02, cy)
+    love.graphics.line(cx - bw * 0.02, cy, cx - bw * 0.14, cy - 3)
+    love.graphics.line(cx - bw * 0.02, cy, cx - bw * 0.14, cy + 3)
+end
+
+TOOL_ICON.spawn = function(x, y, w, h)
+    local cx, cy = x + w / 2, y + h / 2
+    set(D.C.bay_line, 0.75)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", cx - w * 0.30, cy - h * 0.16, w * 0.34, h * 0.32, 3)
+    love.graphics.setLineWidth(1)
+    set(D.C.text, 0.9)
+    love.graphics.line(cx + w * 0.06, cy, cx + w * 0.34, cy)
+    love.graphics.line(cx + w * 0.34, cy, cx + w * 0.24, cy - 3)
+    love.graphics.line(cx + w * 0.34, cy, cx + w * 0.24, cy + 3)
+end
+
+-- One tile's picture in the box (x, y, w, h): tool glyph, prop art, or a surface
+-- swatch. Everything is drawn in the same world frame as the yard, scaled down,
+-- so the palette cannot show a shape the game does not have.
+function D.palette_icon(name, x, y, w, h)
+    if TOOL_ICON[name] then return TOOL_ICON[name](x, y, w, h) end
+
+    local def = props.get(name)
+    if not def then
+        local surf = props.SURFACES[name]
+        if not surf then return end
+        set(surf.colour, 1)
+        love.graphics.rectangle("fill", x, y, w, h, 3)
+        if SURFACE_TILE[name] then SURFACE_TILE[name](x, y, w, h, surf.colour) end
+        set(surf.colour, 0.45)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, y, w, h, 3)
+        return
+    end
+
+    local ext = math.max(def.w or (def.r * 2), def.h or (def.r * 2))
+    local k = math.min(w, h) * 0.86 / ext
+    local fp = props.footprint({ kind = name })
+    love.graphics.push()
+    love.graphics.translate(x + w / 2, y + h / 2)
+    -- the world is y-up (main.lua scales the camera by (s, -s)); the rail has to
+    -- flip the same way or every icon is upside down
+    love.graphics.scale(k, -k)
+    local art = ICON_ART[name] or ART[name]
+    if art then art(0, 0, 0, fp, 1) else D.prop(0, 0, 0, fp, 1) end
+    love.graphics.pop()
+    love.graphics.setLineWidth(1)
 end
 
 function D.editor_ui(doc, state, game)
@@ -1062,100 +1254,162 @@ function D.editor_ui(doc, state, game)
     love.graphics.setFont(fonts.small)
     set(D.C.dim, 0.9)
     love.graphics.print("add: pick a tool, then click the yard", 16, 108)
-    set(D.C.text)
-    love.graphics.print("TOOLS", 16, 136)
 
-    -- the editor's own toasts: saved / renamed / copied. These were drawn only by
-    -- the play HUD, so every message the editor said went nowhere.
-    if game and game.toast and game.toast.expires and love.timer.getTime() < game.toast.expires then
-        love.graphics.setFont(fonts.small)
-        set(D.C.text, 0.92)
-        local t = game.toast.text
-        love.graphics.print(t, D.RAIL + (W - D.RAIL - fonts.small:getWidth(t)) / 2, 18)
-    end
-
+    -- The palette: grouped tiles, drawn by the art that draws the yard, with the
+    -- tooltip carrying the words the rail no longer has room for.
     local mx, my = love.mouse.getPosition()
-    local hovered = D.editor_tool_at(mx, my, state.palette)
+    local lay = D.palette_layout(state.palette, W, H)
+    local hover = nil
 
-    local y = TOOL_Y
-    for _, name in ipairs(state.palette or {}) do
-        local active = (name == state.tool)
-        if active then
-            set(D.C.bay_line, 0.22)
-            love.graphics.rectangle("fill", 10, y - 3, D.RAIL - 20, TOOL_ROW, 4)
-        elseif name == hovered then
-            set(D.C.text, 0.07)
-            love.graphics.rectangle("fill", 10, y - 3, D.RAIL - 20, TOOL_ROW, 4)
-        end
-        set(active and D.C.bay_line or D.C.dim, active and 1 or 0.85)
-        -- the kind is what the file says; the label is what the thing is. Show
-        -- both when they differ, or a level reads as a list of nouns.
-        local def = props.get(name)
-        local text = name
-        if def and def.label and def.label ~= name then text = name .. "  " .. def.label end
-        love.graphics.print(text, 18, y)
-        y = y + TOOL_ROW
+    for _, hd in ipairs(lay.headers) do
+        love.graphics.setFont(fonts.micro)
+        set(D.C.dim, 0.55)
+        love.graphics.print(hd.label, hd.x + 2, hd.y)
+        set(D.C.dim, 0.12)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(hd.x + 4 + fonts.micro:getWidth(hd.label), hd.y + 4, D.RAIL - 10, hd.y + 4)
     end
 
-    y = y + 6
+    for _, t in ipairs(lay.tiles) do
+        local name = t.item.tool or t.item.kind
+        local active = (name == state.tool)
+        local over = (mx >= t.x and mx <= t.x + t.w and my >= t.y and my <= t.y + t.h)
+        if over then hover = t end
+
+        if t.chip then
+            -- a surface: swatch then name on one row
+            if active or over then
+                set(active and D.C.bay_line or D.C.text, active and 0.18 or 0.08)
+                love.graphics.rectangle("fill", t.x, t.y, t.w, t.h, 4)
+            end
+            D.palette_icon(name, t.x + 3, t.y + 3, 22, t.h - 6)
+            love.graphics.setFont(fonts.micro)
+            set(active and D.C.bay_line or D.C.dim, 0.9)
+            love.graphics.print(t.item.label, t.x + 29, t.y + (t.h - fonts.micro:getHeight()) / 2)
+        else
+            if active then
+                set(D.C.bay_line, 0.15)
+                love.graphics.rectangle("fill", t.x, t.y, t.w, t.h, 6)
+                set(D.C.bay_line, 0.8)
+                love.graphics.setLineWidth(1)
+                love.graphics.rectangle("line", t.x, t.y, t.w, t.h, 6)
+            elseif over then
+                set(D.C.text, 0.08)
+                love.graphics.rectangle("fill", t.x, t.y, t.w, t.h, 6)
+            end
+            D.palette_icon(name, t.x + 2, t.y + 3, t.w - 4, t.h - 15)
+            local f = lay.compact and fonts.micro or fonts.tiny
+            love.graphics.setFont(f)
+            set(active and D.C.bay_line or D.C.dim, active and 1 or 0.8)
+            love.graphics.print(t.item.label, t.x + (t.w - f:getWidth(t.item.label)) / 2,
+                                t.y + t.h - f:getHeight() - 3)
+        end
+    end
+
+    -- The tooltip: what the tile is, at what size, and whether it stretches.
+    -- Drawn over the yard, because a 232 px rail cannot explain itself inside
+    -- itself -- and it is the only place the full label still appears.
+    if hover and hover.item.detail then
+        local it = hover.item
+        local tw, th = 218, 74
+        local tx = D.RAIL + 10
+        local ty = math.max(8, math.min(hover.y - 6, H - 120 - th))
+        love.graphics.setColor(0.05, 0.06, 0.08, 0.97)
+        love.graphics.rectangle("fill", tx, ty, tw, th, 6)
+        set(D.C.dim, 0.35)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", tx, ty, tw, th, 6)
+        love.graphics.setFont(fonts.small)
+        set(D.C.text)
+        love.graphics.print(it.title, tx + 10, ty + 7)
+        love.graphics.setFont(fonts.micro)
+        set(D.C.dim, 0.7)
+        love.graphics.print(string.upper(it.tool or it.kind), tx + 10, ty + 27)
+        set(D.C.dim, 0.95)
+        love.graphics.printf(it.detail, tx + 10, ty + 41, tw - 20)
+    end
+
+    -- The panels under the grid. Their headings moved inline when the palette
+    -- became a grid: three stacked headings cost the 48 px the extra rows need,
+    -- and a label followed by its value reads at least as well.
+    local y = lay.bottom + (lay.compact and 6 or 9)
     set(D.C.dim)
     love.graphics.print("snap " .. ((state.snap and state.snap > 0) and (state.snap .. " m") or "off"), 18, y)
-    if doc.selection then
-        local mode = editdoc.resize_mode(doc)
+    local mode = doc.selection and editdoc.resize_mode(doc)
+    if mode and not lay.compact then
+        y = y + 16
         if mode == "none" then
-            y = y + 16
             set(D.C.warn, 0.85)
             love.graphics.print("this kind has one size", 18, y)
-        elseif mode == "length" then
-            y = y + 16
-            set(D.C.dim, 0.8)
-            love.graphics.print("stretches along its length only", 18, y)
-        end
-    end
-
-    y = y + 12
-    set(D.C.text, 0.9)
-    love.graphics.print("SELECTION", 16, y)
-    y = y + 22
-    set(D.C.dim)
-    local sel = doc.selection
-    if sel then
-        local entry = (doc.level[sel.list] or {})[sel.index]
-        if entry then
-            love.graphics.print(string.format("%s %d  %.1f, %.1f",
-                sel.list, sel.index, entry.x, entry.y), 18, y)
         else
-            love.graphics.print(tostring(sel.list), 18, y)
+            set(D.C.dim, 0.8)
+            love.graphics.print(mode == "length" and "stretches along its length only" or "free resize", 18, y)
         end
-    else
-        love.graphics.print("nothing", 18, y)
     end
 
-    y = y + 26
-    set(D.C.text, 0.9)
-    love.graphics.print("ERRORS", 16, y)
-    y = y + 22
-    local errors = (state and state.errors) or {}
-    if #errors == 0 then
-        set(D.C.good, 0.9)
-        love.graphics.print("none  -  savable", 18, y)
-    else
-        set(D.C.warn, 0.95)
-        for i = 1, math.min(3, #errors) do
-            love.graphics.print(errors[i], 18, y)
-            y = y + 18
+    local sel_text = "nothing"
+    if doc.selection then
+        local entry = (doc.level[doc.selection.list] or {})[doc.selection.index]
+        if entry then
+            sel_text = string.format("%s %d   %.1f, %.1f", doc.selection.list,
+                doc.selection.index, entry.x, entry.y)
+        else
+            sel_text = tostring(doc.selection.list)
         end
-        if #errors > 3 then love.graphics.print("+" .. (#errors - 3) .. " more", 18, y) end
+    end
+    local errors = (state and state.errors) or {}
+
+    if lay.compact then
+        -- One line for both blocks: the grid already took the room, and a rail
+        -- that pushes its own warning off-screen has failed at its one job.
+        y = y + 17
+        love.graphics.setFont(fonts.micro)
+        set(D.C.dim, 0.85)
+        love.graphics.print(sel_text, 18, y)
+        set(#errors == 0 and D.C.good or D.C.warn, 0.95)
+        local msg = (#errors == 0) and "savable" or tostring(errors[1])
+        love.graphics.print(msg, D.RAIL - 12 - fonts.micro:getWidth(msg), y)
+    else
+        y = y + 18
+        set(D.C.dim, 0.5)
+        love.graphics.print("SELECTION", 16, y + 1)
+        set(D.C.dim)
+        love.graphics.print(sel_text, 88, y)
+
+        y = y + 18
+        if #errors == 0 then
+            set(D.C.dim, 0.5)
+            love.graphics.print("ERRORS", 16, y + 1)
+            set(D.C.good, 0.9)
+            love.graphics.print("none  -  savable", 88, y)
+        else
+            for i = 1, math.min(3, #errors) do
+                set(D.C.dim, 0.5)
+                love.graphics.print(i == 1 and "ERRORS" or "", 16, y + 1)
+                set(D.C.warn, 0.95)
+                love.graphics.print(errors[i], 88, y)
+                y = y + 17
+            end
+            if #errors > 3 then
+                set(D.C.warn, 0.7)
+                love.graphics.print("+" .. (#errors - 3) .. " more", 88, y)
+            end
+        end
     end
 
     love.graphics.setFont(fonts.small)
     set(D.C.dim, a)
-    local hint = "[ ] tool   click add   drag move   Q/E rotate   drag a handle to size   "
-        .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
-    love.graphics.print(hint, 16, H - 52)
-    set(D.C.text, 0.85)
-    local keys = "V verify   P play   S save   L levels.lua   O share   F2 name   Esc select"
-    love.graphics.print(keys, 16, H - 28)
+    if lay.compact then
+        love.graphics.print("[ ] tool  click add  drag move  Q/E turn  Del  ctrl+Z  G snap  "
+            .. "V verify  P play  S save  Esc select", 16, H - 24)
+    else
+        local hint = "[ ] tool   click add   drag move   Q/E rotate   drag a handle to size   "
+            .. "Del remove   ctrl+Z undo   G snap   wheel zoom"
+        love.graphics.print(hint, 16, H - 52)
+        set(D.C.text, 0.85)
+        local keys = "V verify   P play   S save   L levels.lua   O share   F2 name   Esc select"
+        love.graphics.print(keys, 16, H - 28)
+    end
 
     love.graphics.setFont(fonts.small)
     if state and state.typing then

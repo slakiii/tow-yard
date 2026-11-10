@@ -26,44 +26,59 @@ local M = {}
 -- Extend the wall list (blocked, reverts on contact).
 M.KINDS = {
     building = { class = "solid", shape = "box", w = 7.0, h = 5.0,
-                 colour = { 0.38, 0.35, 0.32 }, label = "clubhouse" },
+                 colour = { 0.38, 0.35, 0.32 }, label = "clubhouse", short = "club" },
     rv = { class = "solid", shape = "box", w = 7.2, h = 2.6,
-           colour = { 0.50, 0.50, 0.53 }, label = "motorhome" },
+           colour = { 0.50, 0.50, 0.53 }, label = "motorhome", short = "rv" },
     caravan = { class = "solid", shape = "box", w = 4.6, h = 2.1,
-                colour = { 0.44, 0.40, 0.33 }, label = "pitched caravan" },
+                colour = { 0.44, 0.40, 0.33 }, label = "pitched caravan", short = "caravan" },
     car = { class = "solid", shape = "box", w = 4.2, h = 1.75,
-            colour = { 0.34, 0.36, 0.42 }, label = "parked car" },
+            colour = { 0.34, 0.36, 0.42 }, label = "parked car", short = "car" },
     tent = { class = "solid", shape = "box", w = 3.4, h = 3.0,
-             colour = { 0.45, 0.38, 0.28 }, label = "tent" },
+             colour = { 0.45, 0.38, 0.28 }, label = "tent", short = "tent" },
     hedge = { class = "solid", shape = "box", w = 6.0, h = 0.7, linear = true,
-              colour = { 0.20, 0.30, 0.19 }, label = "hedge" },
+              colour = { 0.20, 0.30, 0.19 }, label = "hedge", short = "hedge" },
     pool = { class = "solid", shape = "box", w = 8.0, h = 5.0,
-             colour = { 0.18, 0.30, 0.36 }, label = "pool" },
+             colour = { 0.18, 0.30, 0.36 }, label = "pool", short = "pool" },
     table = { class = "solid", shape = "box", w = 2.4, h = 1.8,
-              colour = { 0.44, 0.33, 0.28 }, label = "picnic table" },
+              colour = { 0.44, 0.33, 0.28 }, label = "picnic table", short = "table" },
 
     -- Extend the cone list (knocked once, charged one bump).
     cone = { class = "knockable", shape = "circle", r = 0.35,
-             colour = { 0.95, 0.55, 0.15 }, label = "traffic cone", loud = true },
+             colour = { 0.95, 0.55, 0.15 }, label = "traffic cone", short = "cone", loud = true },
     firepit = { class = "knockable", shape = "circle", r = 0.55,
-                colour = { 0.96, 0.42, 0.10 }, label = "fire pit", loud = true },
+                colour = { 0.96, 0.42, 0.10 }, label = "fire pit", short = "firepit", loud = true },
     chair = { class = "knockable", shape = "circle", r = 0.50,
-              colour = { 0.40, 0.36, 0.38 }, label = "camp chair" },
+              colour = { 0.40, 0.36, 0.38 }, label = "camp chair", short = "chair" },
     -- A beach umbrella is a pole and a canopy: the pole would let a rig drive
     -- through it if this were scenery, so it takes the knockable contact path and
     -- the whole 2.2 m canopy is the circle it is hit by.
     umbrella = { class = "knockable", shape = "circle", r = 1.10,
-                 colour = { 0.34, 0.46, 0.50 }, label = "beach umbrella" },
+                 colour = { 0.34, 0.46, 0.50 }, label = "beach umbrella", short = "umbrella" },
 }
 
 -- Ground paint only: no collision, drawn under everything. Kinds are named here
 -- so a level cannot invent a surface the renderer has never heard of.
 M.SURFACES = {
-    gravel = { colour = { 0.30, 0.28, 0.24 }, label = "gravel" },
-    grass = { colour = { 0.17, 0.26, 0.16 }, label = "grass" },
-    deck = { colour = { 0.26, 0.22, 0.18 }, label = "decking" },
-    water = { colour = { 0.13, 0.22, 0.28 }, label = "water" },
+    gravel = { colour = { 0.30, 0.28, 0.24 }, label = "gravel", short = "gravel" },
+    grass = { colour = { 0.17, 0.26, 0.16 }, label = "grass", short = "grass" },
+    deck = { colour = { 0.26, 0.22, 0.18 }, label = "decking", short = "deck" },
+    water = { colour = { 0.13, 0.22, 0.28 }, label = "water", short = "water" },
 }
+
+-- Palette order, by group: what the editor's rail offers, top to bottom.
+-- Explicit because a palette's order is a design decision and `pairs` has none;
+-- tests/test_props.lua walks the vocabulary against this table, so a kind added
+-- to KINDS/SURFACES cannot silently go missing from the rail.
+M.PALETTE = {
+    structures = { "hedge", "building", "tent", "caravan", "rv", "car", "pool", "table" },
+    camp = { "cone", "firepit", "chair", "umbrella" },
+    ground = { "gravel", "grass", "deck" },
+}
+
+-- In the vocabulary, deliberately not offered in the editor. Water is drawn
+-- inside the pool's own art and no level paints with it; move it into PALETTE
+-- above when a level wants a pond.
+M.UNPLACEABLE = { water = true }
 
 function M.get(kind)
     return M.KINDS[kind]

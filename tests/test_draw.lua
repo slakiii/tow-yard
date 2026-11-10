@@ -55,20 +55,39 @@ function M.speed_reads_in_km_h()
 end
 
 function M.the_rail_maps_a_click_to_a_tool()
-    -- the rail is a list of rows, so a click is arithmetic. Getting this wrong
-    -- means a click on "cone" places a hedge, which reads as the editor ignoring
-    -- you -- and the whole point of making the rail clickable was that "[ and ]"
-    -- was not discoverable.
-    local palette = { "select", "bay", "spawn", "hedge", "cone" }
+    -- the rail is a grid now, so a click is arithmetic over a layout -- and the
+    -- view and the click handler must use the same arithmetic, or a click on
+    -- "cone" places a clubhouse and the editor reads as ignoring you.
+    local palettedata = require("lib.edit.palette")
+    local groups = palettedata.groups()
+    local vw, vh = 1280, 720   -- not W/H: those hold the test helper
 
-    H.expect(draw.editor_tool_at(60, 156, palette) == "select", "the first row is the first tool")
-    H.expect(draw.editor_tool_at(60, 178, palette) == "bay", "one row down is the second")
-    H.expect(draw.editor_tool_at(60, 200, palette) == "spawn", "and so on")
-    H.expect(draw.editor_tool_at(10, 240, palette) == "hedge", "mid-row still hits its row")
+    local lay = draw.palette_layout(groups, vw, vh)
+    H.expect(#lay.tiles == #palettedata.order(), "one tile per placeable tool")
 
-    H.expect(draw.editor_tool_at(60, 100, palette) == nil, "above the list is not a tool")
-    H.expect(draw.editor_tool_at(60, 900, palette) == nil, "below the list is not a tool")
-    H.expect(draw.editor_tool_at(400, 178, palette) == nil, "and the yard is not the rail")
+    -- every tile, at its own centre, must answer with its own name
+    for _, t in ipairs(lay.tiles) do
+        local name = t.item.tool or t.item.kind
+        local hit = draw.editor_tool_at(t.x + t.w / 2, t.y + t.h / 2, groups, vw, vh)
+        H.expect(hit == name, "the centre of " .. name .. " answered " .. tostring(hit))
+    end
+
+    -- and every tile must be inside the rail, above the footer hints
+    for _, t in ipairs(lay.tiles) do
+        H.expect(t.x >= 0 and t.x + t.w <= draw.RAIL, "a tile sticks out of the rail")
+    end
+    H.expect(lay.bottom < vh - 120, "the grid must leave the panels and hints their room")
+
+    local first = lay.tiles[1]
+    H.expect(draw.editor_tool_at(first.x - 6, first.y + 2, groups, vw, vh) == nil,
+             "the margin left of the grid is not a tool")
+    H.expect(draw.editor_tool_at(vw / 2, vh / 2, groups, vw, vh) == nil, "the yard is not the rail")
+
+    -- the minimum window height gets its own layout, tighter and with one
+    -- footer line, because 720 px of grid in 560 px of window is a clipped rail
+    local short = draw.palette_layout(groups, 800, 560)
+    H.expect(short.compact, "560 px is the compact layout")
+    H.expect(short.bottom + 40 <= 560, "the compact grid must leave the hint line room")
 end
 
 return M

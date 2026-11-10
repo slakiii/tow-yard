@@ -20,6 +20,7 @@ local M = { order = {
     "check_rejects_an_unknown_surface_kind",
     "every_kind_has_a_renderer",
     "the_campsite_furniture_has_the_right_contact_path",
+    "the_palette_names_real_kinds",
 } }
 
 local function level_with(walls, cones, surfaces)
@@ -227,6 +228,23 @@ function M.the_campsite_furniture_has_the_right_contact_path()
     H.expect(umbrella.shape == "circle" and umbrella.r >= 1.0,
         "the canopy, not the pole, is the circle the rig is hit by: " .. tostring(umbrella.r))
     H.expect(props.resize_mode("umbrella") == "none", "an umbrella has one size")
+end
+
+function M.the_palette_names_real_kinds()
+    -- the rail's order lives in the vocabulary, so a typo there is a tile that
+    -- places nothing rather than a missing tile -- both silent, both cheap to
+    -- catch here
+    for group, names in pairs(props.PALETTE) do
+        H.expect(#names > 0, "palette group " .. group .. " is empty")
+        for _, kind in ipairs(names) do
+            H.expect(props.KINDS[kind] or props.SURFACES[kind],
+                     "the palette names a kind the vocabulary does not have: " .. kind)
+        end
+    end
+    for kind in pairs(props.UNPLACEABLE) do
+        H.expect(props.KINDS[kind] or props.SURFACES[kind],
+                 "unplaceable names a kind the vocabulary does not have: " .. kind)
+    end
 end
 
 return M

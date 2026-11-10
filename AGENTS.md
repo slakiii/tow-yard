@@ -115,7 +115,11 @@ debug frame, writes screenshots to the LÖVE save directory, then quits 0. A `ti
   `lib/progress.lua` stores best time/stars/ghost over an injected disk, and
   `lib/menu.lua` is the level select's model** (two tabs -- campaign and custom
   -- each with its own cursor; the renderer must ask `menu.rows(model)`, never
-  read `model.rows`, or every tab draws empty), and `lib/edit/doc.lua` +
+  read `model.rows`, or every tab draws empty), **`lib/edit/palette.lua` is the
+  editor rail's contents and order** (groups derived from `props.KINDS.class`
+  and `props.SURFACES`, order from `props.PALETTE` -- never a literal list in
+  the shell: a kind missing from a hand-kept list is a kind nobody can place),
+  and `lib/edit/doc.lua` +
   `lib/edit/undo.lua` are the editor's document and its snapshot stack. The
   `lib/edit/autosave.lua` writes the open document to `drafts/` every two seconds
   and on exit, over the injected disk; the editor's view draws AUTHORED data, not the resolved level: the file is what

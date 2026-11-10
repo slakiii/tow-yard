@@ -17,6 +17,7 @@ local doc = require("lib.edit.doc")
 local props = require("lib.props")
 local undo = require("lib.edit.undo")
 local autosave = require("lib.edit.autosave")
+local palette = require("lib.edit.palette")
 local levelcheck = require("lib.levelcheck")
 local sfx = require("lib.sfx")
 local audio_device = require("lib.audio_device")
@@ -47,10 +48,6 @@ local MODE = { play = "play", menu = "menu", editor = "editor" }
 -- "<id>-copy" -- but a build with no editor is the simpler promise to make.
 local EDITOR_ENABLED = true
 
--- Everything the editor can place. "select" is a tool, not a kind: the palette
--- is one list so the player's eye does not have to sort it into two.
-local PALETTE = { "select", "bay", "spawn", "hedge", "building", "tent", "rv", "car", "pool", "table",
-                  "cone", "firepit", "chair", "umbrella", "gravel", "grass", "deck" }
 local SNAP = 0.5
 -- How far a click may wander, in screen pixels, before it counts as a drag:
 -- selecting a prop must never nudge it (or snap it onto the grid).
@@ -329,7 +326,10 @@ local function open_editor(lvl)
         origin_id = lvl.id,      -- what this document was opened as; see editor_export_lua
         tool = "select",
         snap = SNAP,
-        palette = PALETTE,
+        -- the rail's contents and order come from the vocabulary, not from a
+        -- list kept here: props.PALETTE groups the kinds the game has
+        palette = palette.groups(),
+        tool_order = palette.order(),
         errors = {},
     }
     editor_errors()
@@ -497,11 +497,11 @@ local function editor_keypressed(key)
     elseif key == "f2" then
         e.typing = { buffer = e.doc.level.name or "", original = e.doc.level.name or "" }
     elseif key == "leftbracket" or key == "rightbracket" then
-        local n = #e.palette
+        local n = #e.tool_order
         local i = 1
-        for j, name in ipairs(e.palette) do if name == e.tool then i = j end end
+        for j, name in ipairs(e.tool_order) do if name == e.tool then i = j end end
         i = ((i - 1 + (key == "rightbracket" and 1 or -1)) % n) + 1
-        e.tool = e.palette[i]
+        e.tool = e.tool_order[i]
     elseif ctrl and key == "z" then
         local text = undo.back(e.undo)
         if text then
@@ -1343,7 +1343,32 @@ local function smoke_step()
     elseif smoke.frames == 31 then
         love.graphics.captureScreenshot("smoke-result-invalid.png")
         print("RESULT CARD STATES")
-    elseif smoke.frames >= 32 then
+    elseif smoke.frames == 32 then
+        -- The palette's words live in a tooltip now that the tiles are icons with
+        -- 8 px names, and a tooltip nobody ever sees is the same as not having
+        -- one. Hover a tile through the real pointer and require the hit test --
+        -- the thing the tooltip is drawn from -- to name it.
+        open_editor(levels.get(1))
+        local e = game.editor
+        e.autosave_state = { at = math.huge, text = "" }
+        e.baseline = doc.snapshot(e.doc)      -- a fixture, not the player's work
+        local W, H = love.graphics.getDimensions()
+        local hover
+        for _, t in ipairs(draw.palette_layout(e.palette, W, H).tiles) do
+            if (t.item.tool or t.item.kind) == "umbrella" then hover = t end
+        end
+        assert(hover, "fixture: the umbrella tile must be on the rail")
+        love.mouse.setPosition(math.floor(hover.x + hover.w / 2),
+                               math.floor(hover.y + hover.h / 2))
+        local mx, my = love.mouse.getPosition()
+        local under = draw.editor_tool_at(mx, my, e.palette)
+        assert(under == "umbrella",
+            "the pointer on the umbrella tile answered " .. tostring(under))
+        print("PALETTE HOVER -> UMBRELLA")
+    elseif smoke.frames == 33 then
+        love.graphics.captureScreenshot("smoke-editor-palette.png")
+        love.mouse.setPosition(0, 0)
+    elseif smoke.frames >= 34 then
         print("SMOKE OK")
         love.event.quit(0)
     end
