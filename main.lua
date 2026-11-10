@@ -64,7 +64,8 @@ local game = {
     acc = 0,
     steps = 0,
     new_best = false,
-    gain = nil,
+    record = nil,             -- the best that stood when this run ended
+    delta = nil,              -- counted time minus that record, signed
     ghost = nil,
     ghost_mode = "rig",       -- rig | trail | off: the silhouette is the honest one
     custom = {},              -- imported levels, beside the campaign
@@ -102,7 +103,8 @@ local function load_level_object(lvl)
     game.acc = 0
     game.steps = 0
     game.new_best = false
-    game.gain = nil
+    game.record = nil
+    game.delta = nil
     game.input.steer, game.input.throttle, game.input.brake, game.input.handbrake = 0, 0, 0, false
     game.scale, game.ox, game.oy = camera(game.level)
 
@@ -892,7 +894,18 @@ local function update_play(dt)
     -- Cues are drained once per frame, after whatever steps ran: a step list
     -- that emits two bumps in one frame must still make two sounds, and one
     -- that emits none must not repeat the last.
-    sfx.cues(game.sfx, session.drain(game.s))
+    local cues = session.drain(game.s)
+    sfx.cues(game.sfx, cues)
+    -- The card's arithmetic, at the moment it happens: a price only discovered on
+    -- the result panel is a rule the player learns too late. Damage speaks last,
+    -- because it is the one that voids the attempt.
+    for _, c in ipairs(cues) do
+        if c.kind == "cone" then
+            say(string.format("cone  +%.2f s", c.penalty or 0), 2)
+        elseif c.kind == "bump" and (c.cause == "wall" or c.cause == "jackknife") then
+            say("car damaged - this attempt cannot set a record", 3)
+        end
+    end
 
     -- The result card stops the player's clock, not the ghost's: a best run that
     -- was still on the road when you beat it finishes its line instead of
@@ -908,11 +921,15 @@ local function update_play(dt)
     -- once, on the transition, not every frame the card is on screen.
     if not parked_before and game.s.parked then
         run.finish(game.run, game.s)
+        local f = game.s.final
         local before = progress.mark(game.progress, game.level).best
         local _, improved = progress.record(game.progress, game.level, game.s)
         game.new_best = improved and true or false
-        game.gain = (before and game.s.final.time) and (before - game.s.final.time) or nil
-        if game.gain and game.gain <= 0 then game.gain = nil end
+        -- the card compares the counted time against the record that stood when
+        -- the run ended: read before record() replaces it, so a new best still
+        -- shows what it beat and a slower run shows the gap it has to close
+        game.record = before
+        game.delta = before and (f.time - before) or nil
         -- the ghost is the BEST run, so a slower park must not overwrite it
         local text = improved and run.encode(game.run, game.codec) or nil
         if text then progress.put_ghost(game.progress, game.level, text) end
@@ -982,7 +999,12 @@ local function smoke_step()
     elseif smoke.frames == 4 then
         game.s.parked = true
         game.s.t = 12.5
-        game.s.final = { time = 12.5, bumps = 0, angle_err = 1.2 }
+        -- the slower-than-record card: 12.50 driven + 2.00 for one cone, against a
+        -- record that stood at 13.20
+        game.s.final = { time = 14.50, driven = 12.50, penalties = 2.00, cone_hits = 1,
+                         bumps = 1, angle_err = 1.2, damaged = false, damage = nil }
+        game.s.bumps, game.s.cone_hits = 1, 1   -- the HUD must agree with the card
+        game.record, game.delta, game.new_best = 13.20, 1.30, false
         -- Where the card says it went: a PARKED card over an empty bay is the
         -- smoke lying to itself, and 1.2 deg is the angle the card prints.
         session.place_caravan(game.s, game.level.bay.x, game.level.bay.y,
@@ -1268,7 +1290,26 @@ local function smoke_step()
             disk.remove(levelfmt.CUSTOM_INDEX)     -- leave the save directory as we found it
         end
         game.custom = levelfmt.scan_custom(disk)
-    elseif smoke.frames >= 28 then
+    elseif smoke.frames == 28 then
+        -- the result card's other two states, forced: new best (a record it beat)
+        -- and a void attempt (a time that does not stand)
+        game.toast = nil                       -- the import toast is a previous frame's news
+        game.s.parked = true
+        game.s.t = 21.0
+        game.s.final = { time = 21.00, driven = 21.00, penalties = 0, cone_hits = 0,
+                         bumps = 0, angle_err = 0.6, damaged = false, damage = nil }
+        game.record, game.delta, game.new_best = 22.50, -1.50, true
+    elseif smoke.frames == 29 then
+        love.graphics.captureScreenshot("smoke-result-best.png")
+        game.new_best = false
+        game.s.t, game.s.bumps = 23.10, 1
+        game.s.final = { time = 23.10, driven = 23.10, penalties = 0, cone_hits = 0,
+                         bumps = 1, angle_err = 1.4, damaged = true, damage = "wall" }
+        game.record, game.delta = 22.50, 0.60
+    elseif smoke.frames == 30 then
+        love.graphics.captureScreenshot("smoke-result-invalid.png")
+        print("RESULT CARD STATES")
+    elseif smoke.frames >= 31 then
         print("SMOKE OK")
         love.event.quit(0)
     end

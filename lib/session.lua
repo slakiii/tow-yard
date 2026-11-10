@@ -207,9 +207,11 @@ function M.update(s, input, dt)
     end
     if s.started then
         s.t = s.t + dt
-        -- the 3-star window closing is a thing that happens, not a thing you
-        -- notice afterwards on the result card
-        if s.level.par and not s.par_cued and s.t > s.level.par then
+        -- The clock that counts: drive time plus the cones already clipped. The
+        -- HUD shows this one, so the number you watch is the number the card
+        -- reports, and the par cue closes on it too.
+        if s.level.par and not s.par_cued
+            and (s.t + s.cone_hits * M.CONE_PENALTY) > s.level.par then
             s.par_cued = true
             cue(s, { kind = "par" })
         end

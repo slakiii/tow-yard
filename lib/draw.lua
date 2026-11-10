@@ -554,7 +554,10 @@ function D.hud(s, game)
 
     love.graphics.setFont(fonts.big)
     set(s.started and D.C.text or D.C.dim)
-    local time = fmt_time(s.t)
+    -- the counted time, penalties included: the clock the player watches has to
+    -- be the clock the card scores
+    local counted = s.t + (s.cone_hits or 0) * session.CONE_PENALTY
+    local time = fmt_time(counted)
     love.graphics.print(time, W - 24 - fonts.big:getWidth(time), 18)
 
     love.graphics.setFont(fonts.small)
@@ -1189,10 +1192,27 @@ function D.editor_prompt(state, game)
     love.graphics.print("Enter  keep editing", x + 20, y + 90)
 end
 
+-- The result card. Two numbers and one signed difference: what you drove (with
+-- the cone penalties folded in, because that is the time that counts) and the
+-- record it was measured against. TrackMania's idea, in this game's palette.
+--
+-- Three facts need a state of their own, and the card may not lie about any of
+-- them: a first park has no record to compare, a void attempt cannot claim one,
+-- and a slower run must still say how far off it was.
 function D.overlay(s, game)
     local W = love.graphics.getWidth()
-    local w, h = 360, 196
+    local w, h = 360, 206
     local x, y = W - w - 24, 118
+    local f = s.final or {}
+    local invalid = f.damaged == true
+    local record = game and game.record
+    local counted = f.time or 0
+    local right = x + w - 22
+
+    local function right_text(text, font, yy)
+        love.graphics.print(text, right - font:getWidth(text), yy)
+    end
+
     love.graphics.setColor(D.C.panel)
     love.graphics.rectangle("fill", x, y, w, h, 10)
     set(D.C.bay_line)
@@ -1200,31 +1220,66 @@ function D.overlay(s, game)
     love.graphics.rectangle("line", x, y, w, h, 10)
 
     love.graphics.setFont(fonts.big)
-    set(D.C.good)
+    set(invalid and D.C.dim or D.C.good)
     love.graphics.print("PARKED", x + 22, y + 14)
-
-    if game and game.new_best then
+    if game and game.new_best and not invalid then
         love.graphics.setFont(fonts.small)
-        set(D.C.cone)
-        local text = "NEW BEST"
-        if game.gain and game.gain > 0.005 then
-            text = text .. string.format("   -%.2f s", game.gain)
-        end
-        love.graphics.print(text, x + 22, y + 46)
+        set(D.C.good)
+        love.graphics.print("NEW BEST", x + 22 + fonts.big:getWidth("PARKED") + 12, y + 32)
+    end
+    -- the same pips the level select uses, so "clean and quick" reads the same
+    -- in both places
+    pips(right - 50, y + 22, invalid and 0 or session.grade(s))
+
+    love.graphics.setFont(fonts.big)
+    set(invalid and D.C.dim or D.C.text)
+    local time_text = fmt_time(counted)
+    love.graphics.print(time_text, x + 22, y + 48)
+    if invalid then
+        -- reported, not accepted: the run happened, the time does not stand
+        set(D.C.warn)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(x + 22, y + 72, x + 22 + fonts.big:getWidth(time_text), y + 72)
     end
 
     love.graphics.setFont(fonts.mid)
-    set(D.C.text)
-    love.graphics.print("time  " .. fmt_time(s.final.time), x + 22, y + 66)
-    love.graphics.print("bumps " .. s.final.bumps, x + 22, y + 94)
-    love.graphics.print(string.format("angle %.1f deg", s.final.angle_err), x + 22, y + 122)
-
-    local stars = session.grade(s)
-    set(D.C.cone)
-    love.graphics.print(string.rep("*", stars) .. string.rep("-", 3 - stars), x + 230, y + 66)
+    if invalid then
+        set(D.C.warn)
+        right_text("INVALID", fonts.mid, y + 52)
+    elseif not record then
+        set(D.C.dim)
+        right_text("FIRST PARK", fonts.mid, y + 52)
+    else
+        local d = game and game.delta or (counted - record)
+        set((d < -0.005 and D.C.good) or (d > 0.005 and D.C.warn) or D.C.dim)
+        right_text(string.format("%+.2f s", d), fonts.mid, y + 52)
+    end
 
     love.graphics.setFont(fonts.small)
     set(D.C.dim)
+    love.graphics.print("this run", x + 22, y + 92)
+    right_text("record " .. (record and fmt_time(record) or "--"), fonts.small, y + 92)
+
+    set(D.C.text, 0.10)
+    love.graphics.rectangle("fill", x + 22, y + 116, w - 44, 1)
+
+    -- the terms behind the counted time, and which contact voided it
+    local left, left_colour
+    if invalid then
+        left = "car damaged - " .. (f.damage == "jackknife" and "jackknife" or "wall contact")
+        left_colour = D.C.warn
+    elseif (f.cone_hits or 0) > 0 then
+        left = string.format("cones %d  +%.2f s", f.cone_hits, f.penalties or 0)
+        left_colour = D.C.cone
+    else
+        left = "clean run"
+        left_colour = D.C.dim
+    end
+    set(left_colour)
+    love.graphics.print(left, x + 22, y + 126)
+    set(D.C.dim)
+    right_text(string.format("angle %.1f deg", f.angle_err or 0), fonts.small, y + 126)
+
     love.graphics.print("R retry    N next level", x + 22, y + h - 30)
 end
 
