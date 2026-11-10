@@ -862,23 +862,6 @@ end
 
 local resize_guard, last_clamp = false, -10
 
--- Called from love.resize at the bottom of the file, where the camera also reacts:
--- a second `function love.resize` here would simply be shadowed by that one.
-local function clamp_window_floor(w, h)
-    -- A compositor that refuses the clamp would otherwise get a new request on
-    -- every resize event it sends back: one clamp per half second is enough to
-    -- hold the floor and cannot spin.
-    if resize_guard or love.timer.getTime() - last_clamp < 0.5 then return end
-    local ww, wh = math.max(MIN_W, w), math.max(MIN_H, h)
-    if ww == w and wh == h then return end
-    resize_guard = true
-    last_clamp = love.timer.getTime()
-    local _, _, flags = love.window.getMode()
-    flags.minwidth, flags.minheight = nil, nil       -- never hand the hint back
-    love.window.setMode(ww, wh, flags)
-    resize_guard = false
-end
-
 local function fix_window_size(why)
     if window_settled then return end
     local w, h, flags = love.window.getMode()
@@ -1664,7 +1647,6 @@ local function play_keypressed(key)
 end
 
 function love.resize(w, h)
-    clamp_window_floor(w, h)
     game.scale, game.ox, game.oy = camera(game.level)
 end
 
