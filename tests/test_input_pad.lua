@@ -15,6 +15,7 @@ local input = require("lib.input")
 local M = { order = {
     "the_vocabulary_is_what_love_calls_these",
     "a_fake_pad_drives_the_car",
+    "a_drifting_pad_does_not_override_a_held_key",
     "menu_directions_fire_once_per_press",
     "menu_edges_ignore_a_resting_stick",
     "pad_buttons_are_edge_triggered",
@@ -107,6 +108,41 @@ function M.a_fake_pad_drives_the_car()
     -- and when the pad is idle the attribution stays where it was
     input.poll(st)
     H.expect(st.last_device == "gamepad", "no keyboard input does not steal it back")
+end
+
+-- The module header and the README both promise "the stronger of the two
+-- devices wins per axis". merge_pad used to OVERWRITE the keyboard whenever the
+-- stick cleared the deadzone, so a pad resting at a few percent of drift
+-- steered the car by itself -- in the OPPOSITE lock to the key being held --
+-- and stole the HUD's device glyph while the player was on the keyboard.
+--
+-- This is the case the old suite missed: `menu_edges_ignore_a_resting_stick`
+-- only checks hands-off. "A resting pad changes nothing" is also satisfied by a
+-- merge that ignores the pad entirely, which is the opposite bug, so both
+-- halves are pinned here.
+function M.a_drifting_pad_does_not_override_a_held_key()
+    local drift = input.steer_from_stick(0.2)
+    H.expect(math.abs(drift) > 0, "0.2 is past the deadzone, so it is real drift")
+    H.expect(math.abs(drift) < 0.1, "and it is weak: " .. drift)
+
+    -- keyboard held LEFT is +1 by the module's sign convention
+    local held = { steer = 1, throttle = 0, brake = 0, handbrake = false,
+                   last_device = "keyboard" }
+    input.merge_pad(held, { leftx = 0.2 })
+    H.expect(held.steer == 1,
+        "a weak pad must not override a held key -- got " .. held.steer ..
+        ", which would steer the car the opposite way")
+    H.expect(held.last_device == "keyboard",
+        "and a pad that did not win must not steal the device glyph: "
+        .. tostring(held.last_device))
+
+    -- the other half of the contract: a genuinely stronger stick still wins,
+    -- or the "strongest wins" rule has been replaced by "keyboard always wins"
+    local light = { steer = 0.2, throttle = 0, brake = 0, handbrake = false,
+                    last_device = "keyboard" }
+    input.merge_pad(light, { leftx = -0.9 })
+    H.expect(light.steer > 0.5, "a strong stick must still win: " .. light.steer)
+    H.expect(light.last_device == "gamepad", "and take the glyph when it does")
 end
 
 function M.menu_directions_fire_once_per_press()

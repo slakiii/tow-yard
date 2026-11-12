@@ -90,8 +90,14 @@ function M.merge_pad(input, pad)
         steer = (pad.dpleft and 1 or 0) - (pad.dpright and 1 or 0)
     end
     if steer ~= 0 then
-        input.steer = steer
-        input.last_device = "gamepad"
+        -- Strongest wins, per the contract in the header: a stick resting a few
+        -- percent past the deadzone must not out-vote a held key. Comparing
+        -- magnitudes is also what keeps the attribution honest -- a pad that
+        -- did not win must not take the HUD glyph.
+        if math.abs(steer) > math.abs(input.steer or 0) then
+            input.steer = steer
+            input.last_device = "gamepad"
+        end
     end
     local rt = math.max(0, pad.rt or 0)
     local lt = math.max(0, pad.lt or 0)
