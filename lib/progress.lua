@@ -38,7 +38,15 @@ local function parse_line(line)
     local best = tonumber(t[4])
     if not (stars and best) then return nil end
     if stars < 0 or stars > 3 or stars ~= math.floor(stars) then return nil end
-    if best ~= best or best <= 0 then return nil end
+    -- 0.00 is how serialise() writes "no time": a damaged park is a completed
+    -- level with nothing to show for it, so the store writes best = 0. Rejecting
+    -- it here meant the park was written and then discarded on the next load, so
+    -- the level read as never completed forever. The two halves of one format
+    -- have to agree on what "no time" means -- the writer already said 0.
+    -- 0 cannot be a real time: a park needs PARK_HOLD (0.25 s) of stillness
+    -- before it is accepted, so the fastest possible reading formats as 0.25.
+    if best ~= best or best < 0 then return nil end
+    if best == 0 then best = nil end
     if not t[6]:match("^%x%x+$") then return nil end
     return { id = id, stars = stars, best = best, ghost = t[5] == "1", content = t[6] }
 end

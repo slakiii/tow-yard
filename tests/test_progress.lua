@@ -23,6 +23,7 @@ local M = { order = {
     "an_imported_run_becomes_the_ghost_to_beat",
     "adopting_a_run_never_replaces_a_better_time",
     "a_damaged_park_cannot_improve_or_claim_a_ghost",
+    "a_damaged_park_survives_a_restart",
 } }
 
 -- A parked session at a chosen clock reading; the fixture builds it through the
@@ -214,6 +215,39 @@ function M.a_damaged_park_cannot_improve_or_claim_a_ghost()
     H.expect(ok == true, "a clean park improves")
     H.expect(math.abs(e2.best - clean.final.time) < 1e-9, "and takes the time: " .. tostring(e2.best))
     H.expect(e2.ghost == true, "with a ghost")
+end
+
+-- The gap the existing damaged-park test left open: it checked the store's
+-- in-memory behaviour and never a save/load round trip.
+--
+-- serialise() writes "no time" as 0.00, and parse_line() rejected any best <= 0
+-- -- so a damaged park was written and then thrown away on the next load, with
+-- a "skipped a line" warning as the only trace. The player did park; the level
+-- must still read as completed with nothing to show for it.
+function M.a_damaged_park_survives_a_restart()
+    local disk = fake_disk()
+    local p = progress.open(disk)
+    local s, used = damaged_park(levels.get(1), 9)
+
+    progress.record(p, used, s)
+    H.expect(progress.save(p) == true, "the park is written")
+
+    local back = progress.open(disk)
+    H.expect(#back.warnings == 0,
+        "a damaged park must parse, not be skipped: " .. table.concat(back.warnings, "; "))
+
+    local m = progress.mark(back, used)
+    H.expect(m.completed == true, "a damaged park survives a restart")
+    H.expect(m.best == nil, "with no time: " .. tostring(m.best))
+    H.expect(m.stars == 0, "no stars: " .. tostring(m.stars))
+    H.expect(m.ghost == false, "and no ghost")
+
+    -- and the sentinel did not turn into a real time: a later clean park owns it
+    local clean = parked(used, 21.5)
+    local e, ok = progress.record(back, used, clean)
+    H.expect(ok == true, "a clean park afterwards is an improvement")
+    H.expect(math.abs(e.best - clean.final.time) < 1e-9,
+        "and takes the time rather than losing to a phantom 0: " .. tostring(e.best))
 end
 
 return M
