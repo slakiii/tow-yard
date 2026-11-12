@@ -195,6 +195,11 @@ distinct marker. The two halves of one file format must agree on what "no time" 
 
 ### B5 — A gamepad stick drift silently overrides the keyboard
 
+> **FIXED** in `61ef03c` — the steer merge compares magnitudes like throttle and
+> brake already did; measured keyboard-held + drift 0.2 now yields steer `+1.0000`
+> / `keyboard` (was `-0.0348` / `gamepad`), pinned by
+> `a_drifting_pad_does_not_override_a_held_key`.
+
 **`lib/input.lua:87-95`**
 
 The module header claims *"The stronger of the two devices wins per axis, so the pad
