@@ -30,6 +30,10 @@ Severity is about what a **player** experiences, not about how hard the fix is.
 
 ### B1 — The ghost desynchronises from the player whenever the run has a pre-roll
 
+> **FIXED** in `1839e4d` — `run.clock_start` / `run.advance_aligned` rebase the
+> ghost onto its own pre-roll; measured lag 5.4 m -> 0.000 m, pinned by
+> `the_ghost_stays_level_with_a_pre_roll`.
+
 **`lib/session.lua:204` · `lib/run.lua:52` · `main.lua:1009`**
 
 `game.steps` counts only frames **after** the session `started`. But `run.recording`
@@ -70,6 +74,11 @@ different time bases.
 ---
 
 ### B2 — The audit cannot see any level whose bay is off-axis, and reports "unwinnable"
+
+> **PARTLY FIXED** in `a1e7327` — a two-segment arc search now certifies bays up
+> to 60 deg off-axis, and a NO LINE past that prints "UNPROVEN, not unwinnable"
+> instead of implying the level is broken. A three-point turn is still beyond the
+> instrument; level 3 therefore still needs a hand-staged playtest to certify.
 
 **`lib/audit.lua:86`**
 
@@ -121,6 +130,10 @@ level whose bay is off-axis can be certified, which blocks authoring anything ne
 ---
 
 ### B3 — The rig can drive straight out of the yard, and the camera stops following
+
+> **FIXED** in `6b20ccf` — the bounds rectangle is now collision, reported as a
+> wall contact; all seven levels contain a 30 s straight run, pinned by
+> `the_yard_edge_is_a_wall` (mutation-checked).
 
 **`lib/levels.lua` (every `bounds`) · `main.lua:78`**
 
