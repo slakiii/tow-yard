@@ -279,7 +279,12 @@ rectangle.
 
 ### B7 — A failed write is reported as success, and the best time is silently lost
 
-**`lib/progress.lua:181` and `:196`**
+> **FIXED** in `cf24471` — `save`/`put_ghost` check the write, keep `dirty` set on
+> failure so the next park retries, and return `false, reason`; the three
+> `main.lua` sites go through `save_progress()`, which toasts the reason.
+> Mutation-checked (both write checks reverted fails exactly the two new tests).
+
+**`lib/progress.lua:202` (`save`) and `:186` (`put_ghost`)**
 
 ```lua
 self.disk.write(ghost_name(level), text)
