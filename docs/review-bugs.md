@@ -440,7 +440,13 @@ hand-tune par times: playtest them"* — and never scale an old one.
 
 ### B13 — One clipped cone costs exactly the same two stars as a perfect run
 
-**`lib/session.lua:319`**
+> **FIXED** in `2232a89` — the two qualities are defined independently
+> (`clean = bumps == 0`, `quick = time <= par`) and each is priced at every tier,
+> so a cone costs a star in both the fast and the slow case. The `1.5x` band is
+> gone. Pinned by `the_grade_prices_both_cleanliness_and_speed`, which walks all
+> four corners and isolates the one that distinguishes the two rules.
+
+**`lib/session.lua:325` (`session.grade`)**
 
 ```lua
 if f.bumps == 0 and f.time <= s.level.par then return 3 end
