@@ -183,10 +183,22 @@ local function ghost_name(level)
     return M.GHOST_DIR .. levelfmt.content_hash(level) .. ".tyrun"
 end
 
+-- One rule for "did the write land", matching lib/edit/autosave.lua: the real
+-- adapter returns true, or nil plus an error string (love.filesystem.write
+-- returns nil, err when the directory is missing or the disk is full). A fake
+-- that returns nothing at all counts as success, so this stays usable with the
+-- test double.
+local function write_ok(ok, err)
+    return not (ok == false or (ok == nil and err))
+end
+
 function M.put_ghost(self, level, text)
     if not (self.disk and text) then return false end
     if self.disk.mkdir then self.disk.mkdir(M.GHOST_DIR) end
-    self.disk.write(ghost_name(level), text)
+    local ok, err = self.disk.write(ghost_name(level), text)
+    if not write_ok(ok, err) then
+        return false, tostring(err or "write failed")
+    end
     return true
 end
 
@@ -201,7 +213,13 @@ end
 
 function M.save(self)
     if not self.disk or not self.dirty then return false end
-    self.disk.write(M.FILE, serialise(self))
+    local ok, err = self.disk.write(M.FILE, serialise(self))
+    if not write_ok(ok, err) then
+        -- Leave dirty set: clearing it here is what made a failed write
+        -- permanent, because every later save saw a clean store and returned
+        -- early. The next park retries instead of the best time being lost.
+        return false, tostring(err or "write failed")
+    end
     self.dirty = false
     return true
 end

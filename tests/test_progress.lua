@@ -24,6 +24,8 @@ local M = { order = {
     "adopting_a_run_never_replaces_a_better_time",
     "a_damaged_park_cannot_improve_or_claim_a_ghost",
     "a_damaged_park_survives_a_restart",
+    "a_failed_write_is_reported_and_retried",
+    "a_failed_ghost_write_is_reported",
 } }
 
 -- A parked session at a chosen clock reading; the fixture builds it through the
@@ -248,6 +250,46 @@ function M.a_damaged_park_survives_a_restart()
     H.expect(ok == true, "a clean park afterwards is an improvement")
     H.expect(math.abs(e.best - clean.final.time) < 1e-9,
         "and takes the time rather than losing to a phantom 0: " .. tostring(e.best))
+end
+
+-- A write that fails must not report success, and must not clear the dirty flag:
+-- clearing it is what made the loss permanent, because every later save saw a
+-- clean store and returned early. love.filesystem.write returns nil + an error
+-- when the directory is missing or the disk is full, and the store discarded
+-- that -- so a full disk silently ate every best time while the game said nothing.
+function M.a_failed_write_is_reported_and_retried()
+    local lvl = levels.get(1)
+    local disk = fake_disk()
+    local p = progress.open(disk)
+    progress.record(p, lvl, parked(lvl, 20))
+    H.expect(p.dirty == true, "fixture: there is something to write")
+
+    disk.write = function() return nil, "No space left on device" end
+    local ok, err = progress.save(p)
+    H.expect(ok == false, "a failed write must not report success")
+    H.expect(tostring(err):find("No space") ~= nil,
+        "and must carry the reason: " .. tostring(err))
+    H.expect(p.dirty == true, "and must leave the store dirty so the next save retries")
+    H.expect(disk.files[progress.FILE] == nil, "nothing was written")
+
+    -- the device makes room: the SAME store retries and now persists
+    disk.write = function(n, d) disk.files[n] = d; return true end
+    H.expect(progress.save(p) == true, "the retry succeeds")
+    H.expect(p.dirty == false, "and only now is the store clean")
+    H.expect(math.abs(progress.mark(progress.open(disk), lvl).best - 20) < 1e-9,
+        "the best time survives the retry")
+end
+
+function M.a_failed_ghost_write_is_reported()
+    local lvl = levels.get(1)
+    local disk = fake_disk()
+    local p = progress.open(disk)
+    disk.write = function() return nil, "Read-only file system" end
+
+    local ok, err = progress.put_ghost(p, lvl, "TOWYARD RUN 1\nfake\n")
+    H.expect(ok == false, "a ghost that did not store must not claim success")
+    H.expect(tostring(err):find("Read%-only") ~= nil,
+        "with the reason: " .. tostring(err))
 end
 
 return M

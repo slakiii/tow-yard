@@ -152,6 +152,17 @@ local function say(text, seconds)
     game.toast = { text = text, expires = love.timer.getTime() + (seconds or 4) }
 end
 
+-- A write that did not land is the player's progress gone, so it must be seen.
+-- The store keeps itself dirty and retries on the next park, but staying silent
+-- here is how a full disk eats every best time without a word being said.
+local function save_progress()
+    local ok, err = progress.save(game.progress)
+    if ok == false and err then
+        say("could not save your progress (" .. tostring(err) .. ") - will retry", 8)
+    end
+    return ok
+end
+
 -- "Next level" is a campaign idea. On a custom level there is no next, and
 -- guessing from a stale index is how R used to land on the wrong track; saying
 -- so is the honest answer. Defined after `say`, which it needs to be in scope.
@@ -188,7 +199,7 @@ local function import_text(text)
             -- the bundled ghost is stored and never shown.
             progress.adopt(game.progress, got.level, final)
             progress.put_ghost(game.progress, got.level, run.encode(got.run, game.codec))
-            progress.save(game.progress)
+            save_progress()
         end
         game.custom = levelfmt.scan_custom(disk)
         if game.menu then menu.rebuild(game.menu, levels.ALL, game.custom) end
@@ -202,7 +213,7 @@ local function import_text(text)
         if ok then
             progress.adopt(game.progress, game.level, final)
             progress.put_ghost(game.progress, game.level, run.encode(got.run, game.codec))
-            progress.save(game.progress)
+            save_progress()
             reload_level()
             say("rival ghost loaded")
         else
@@ -1064,7 +1075,7 @@ local function update_play(dt)
         -- the ghost is the BEST run, so a slower park must not overwrite it
         local text = improved and run.encode(game.run, game.codec) or nil
         if text then progress.put_ghost(game.progress, game.level, text) end
-        progress.save(game.progress)
+        save_progress()
     end
 
     local impact = game.s.bump_flash > 0.30 and 1 or nil
