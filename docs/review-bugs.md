@@ -314,7 +314,13 @@ Same for `put_ghost`.
 
 ### B8 — The importer and the editor's Save skip every geometric rule
 
-**`main.lua:169` (`import_text`) · `main.lua:394` (`editor_save`)**
+> **FIXED** in `9f88d20` — the importer now runs `levelcheck.errors` and refuses
+> an illegal level before storing it; the editor still saves (the rail already
+> names the problem, and the work is the player's) but its toast now says "saved
+> X with N problems: …" instead of a clean "saved". Pinned by the
+> `IMPORT REFUSES AN ILLEGAL LEVEL` smoke frame, mutation-checked.
+
+**`main.lua:187` (`import_text`) · `main.lua:449` (`editor_save`)**
 
 `levelcheck.errors()` is called by the test suite and by the editor's *error
 display* — but **not** by the import path and **not** by the save path.
