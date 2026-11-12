@@ -189,6 +189,90 @@ function M.drive_in(level, pose, opts)
     }
 end
 
+-- A TWO-SEGMENT manoeuvre: drive forward on an arc, stop, then reverse.
+--
+-- This is the shape a player actually uses to reverse a trailer into an
+-- off-axis bay: drive out to get the rig's nose pointing the right way, then
+-- back in. It is also the shape the old controller could not express, because
+-- the old controller aimed at the BEARING to the staging pose -- and a
+-- bearing-based approach arrives pointing along the bearing, not along the bay
+-- axis, which is exactly what the reverse-in phase needs and cannot use.
+--
+-- So this searches the manoeuvre directly instead of guessing a controller
+-- that produces one: a forward arc (steer, duration), a stop, and a reverse
+-- (steer, duration). The game's own park test decides whether it worked.
+--
+-- The reverse-in phase is the game's own controller, unchanged, so a line
+-- found here is a line in the shipped physics.
+M.SEGMENT_STEERS = { -1, -0.5, 0, 0.5, 1 }
+M.SEGMENT_TIMES = { 2, 4, 6, 8, 10, 12 }
+
+local function segment_drive(s, level, steer, seconds, reverse)
+    local n = math.floor(seconds / M.DT)
+    for _ = 1, n do
+        local inp
+        if reverse then
+            inp = { steer = steer, throttle = 0, brake = 0.6, handbrake = false }
+        else
+            inp = { steer = steer, throttle = 0.7, brake = 0, handbrake = false }
+        end
+        session.update(s, inp, M.DT)
+        if s.bumps > 0 then return false end
+    end
+    return true
+end
+
+-- One two-segment attempt. Returns the session's end state and whether it parked.
+local function segment_attempt(level, fsteer, ftime, rsteer, rtime)
+    local s = session.new(level)
+    if not segment_drive(s, level, fsteer, ftime, false) then
+        return { parked = false, bumps = s.bumps, s = s }
+    end
+    -- stop, then change gear
+    for _ = 1, 30 do
+        session.update(s, { steer = 0, throttle = 0, brake = 1, handbrake = false }, M.DT)
+    end
+    if not segment_drive(s, level, rsteer, rtime, true) then
+        return { parked = false, bumps = s.bumps, s = s }
+    end
+    -- the game's own reverse-in controller finishes the job
+    local parked, tb = reverse_in(s, M.REVERSE_T)
+    return { parked = parked and s.parked or false, bumps = s.bumps, s = s, time = tb }
+end
+
+-- Search the two-segment manoeuvre space. Used ALONGSIDE the staging-grid
+-- search: the grid finds the clean straight lines, and this finds the arcs a
+-- player would drive to reach an off-axis bay.
+function M.solve_segments(level, opts)
+    opts = opts or {}
+    local steers = opts.steers or M.SEGMENT_STEERS
+    local times = opts.times or M.SEGMENT_TIMES
+    local best, tried, parked = nil, 0, 0
+    for _, fsteer in ipairs(steers) do
+        for _, ftime in ipairs(times) do
+            for _, rsteer in ipairs(steers) do
+                for _, rtime in ipairs(times) do
+                    tried = tried + 1
+                    local r = segment_attempt(level, fsteer, ftime, rsteer, rtime)
+                    if r.parked then
+                        parked = parked + 1
+                        local t = (r.time or 0) + ftime + rtime
+                        if not best or t < best.time then
+                            best = {
+                                time = t, bumps = r.bumps,
+                                fsteer = fsteer, ftime = ftime,
+                                rsteer = rsteer, rtime = rtime,
+                                x = r.s.rig.x, y = r.s.rig.y, th = r.s.rig.th, ph = r.s.rig.ph,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return { level = level, solved = best ~= nil, best = best, tried = tried, parked = parked }
+end
+
 -- Search the staging grid. Returns a result table; see M.format for the report.
 function M.solve(level, opts)
     opts = opts or {}
@@ -252,9 +336,28 @@ function M.solve(level, opts)
         }
     end
 
+    -- The staging grid cannot reach an off-axis bay, because it arrives
+    -- pointing along the BEARING rather than along the bay axis. When it
+    -- finds nothing, try the manoeuvre a player would use: drive forward on
+    -- an arc to get the nose pointing the right way, then reverse in.
+    --
+    -- Only the fallback runs, so the common case (an in-axis bay) costs
+    -- nothing extra.
+    local segments = nil
+    if not best and opts.segments ~= false then
+        segments = M.solve_segments(level, opts.segment_opts)
+        if segments.solved then
+            best = segments.best
+            best.pose = nil
+            best.pre = nil
+            best.segment = true
+        end
+    end
+
     return { level = level, solved = best ~= nil, best = best,
              tried = tried, reached = reached, parked = solved,
-             stalled = stalled, bumped = bumped }
+             stalled = stalled, bumped = bumped,
+             segments = segments }
 end
 
 function M.format(res, index)
@@ -267,14 +370,37 @@ function M.format(res, index)
     -- Two very different failures look identical in the counts above, so say
     -- which one this is instead of guessing on the player's behalf.
     if not res.solved and res.reached == 0 then
-        add("  none reachable: %d gave up without a bump, %d bumped something",
-            res.stalled or 0, res.bumped or 0)
-        if (res.bumped or 0) == 0 then
-            add("  nothing was hit -- the probe could not steer to any pose in time,")
-            add("  which usually means the poses sit behind the spawn. Playtest it.")
-        else
-            add("  the yard is in the way: clear the approach corridor, not the bay.")
+        -- When the two-segment search also came up empty the instrument is the
+        -- limit, not the yard: the staging grid drove into walls because it
+        -- aims at the bearing, not because the corridor is blocked. Say that
+        -- once, below, instead of pointing the author at the wrong thing.
+        local instrument_limit = res.segments ~= nil and not res.segments.solved
+        if not instrument_limit then
+            add("  none reachable: %d gave up without a bump, %d bumped something",
+                res.stalled or 0, res.bumped or 0)
+            if (res.bumped or 0) == 0 then
+                add("  nothing was hit -- the probe could not steer to any pose in time,")
+                add("  which usually means the poses sit behind the spawn. Playtest it.")
+            else
+                add("  the yard is in the way: clear the approach corridor, not the bay.")
+            end
         end
+    end
+    -- The staging grid arrives along the BEARING to the pose, so it cannot
+    -- serve a bay whose axis differs from that bearing. The two-segment
+    -- search below covers the arcs a player drives instead, and it reaches
+    -- bays up to ~60 degrees off-axis. Past that a rig needs a three-point
+    -- turn, which this instrument does not plan -- so a NO LINE here is a
+    -- statement about the instrument, never about the level.
+    if res.segments then
+        add("  two-segment search: %d of %d arcs parked",
+            res.segments.parked or 0, res.segments.tried or 0)
+    end
+    if not res.solved then
+        add("  UNPROVEN, not unwinnable: this probe plans no three-point turn, so a")
+        add("  bay more than ~60 degrees off the approach axis is beyond it. Confirm")
+        add("  winnability by staging the rig at the pose by hand and running the")
+        add("  reverse-in alone; if that parks clean, the level is fine.")
     end
     if res.best then
         add("  best %.2f s, %d bumps, par %s", res.best.time, res.best.bumps,
