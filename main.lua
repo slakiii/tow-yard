@@ -185,6 +185,16 @@ local function import_text(text)
     end
 
     if got.level then
+        -- The rules live in one place and lib/levelcheck's header says every
+        -- caller asks -- this one did not, so a shared level whose bay sat
+        -- outside the yard, or whose props were stacked on each other, was
+        -- stored and opened. An import cannot be fixed in game, so refuse it
+        -- rather than adopting a level that may not be parkable.
+        local problems = levelcheck.errors(got.level)
+        if #problems > 0 then
+            say(string.format("that level is not playable: %s", problems[1]), 8)
+            return
+        end
         local name = levelfmt.save_custom(disk, got.level)
         if not name then
             say("could not store that level", 6)
@@ -436,7 +446,18 @@ local function editor_save()
     e.baseline = doc.snapshot(e.doc)      -- saved: this is the text now on disk
     autosave.clear(disk, e.origin_id or lvl.id)
     e.autosave_state = {}
-    say("saved " .. name)
+    -- Saving is never blocked here: the document is the player's work, and the
+    -- rail already names the first problem, so refusing would cost more than it
+    -- protects. But the toast must not claim a clean save either. The importer
+    -- refuses instead, because someone else's broken level cannot be fixed in
+    -- game and would sit in the catalogue forever.
+    local problems = levelcheck.errors(lvl)
+    if #problems > 0 then
+        say(string.format("saved %s with %d problem%s: %s", name, #problems,
+            #problems == 1 and "" or "s", problems[1]), 8)
+    else
+        say("saved " .. name)
+    end
 end
 
 local function editor_verify()
@@ -1554,7 +1575,27 @@ local function smoke_step()
         print("PALETTE HOVER -> UMBRELLA")
     elseif smoke.frames == 33 then
         love.graphics.captureScreenshot("smoke-editor-palette.png")
-    elseif smoke.frames >= 34 then
+    elseif smoke.frames == 34 then
+        -- An imported level is somebody else's content with no way to repair it
+        -- in game, so one that fails the geometry rules must not enter the
+        -- catalogue. This frame used to store it and open it.
+        local bad = levelfmt.decode(levelfmt.encode(levels.get(1)))
+        bad.id, bad.name = "smoke-illegal", "Smoke illegal"
+        bad.series, bad.order = nil, nil
+        bad.bay.x = bad.bounds.x1 + 5          -- the bay sits outside the yard
+        local problems = levelcheck.errors(bad)
+        assert(#problems > 0, "fixture: the illegal level must fail the rules")
+        local before = #game.custom
+        local opened = game.level.id
+        import_text(share.code(share.bundle(bad, nil, game.codec, "user"), game.codec))
+        assert(game.level.id == opened,
+            "an illegal imported level must not be opened, got " .. tostring(game.level.id))
+        assert(#game.custom == before,
+            "and must not enter the catalogue: " .. before .. " -> " .. #game.custom)
+        assert(game.toast and game.toast.text:find("not playable"),
+            "and the refusal must say why: " .. tostring(game.toast and game.toast.text))
+        print("IMPORT REFUSES AN ILLEGAL LEVEL")
+    elseif smoke.frames >= 35 then
         draw.set_pointer(nil)
         -- The verdict, once, after every frame has had a chance to settle: the
         -- WINDOW lines only report attempts, and a Wayland resize is a request
