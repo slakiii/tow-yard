@@ -163,6 +163,12 @@ whose open edge lets the player drive into the void is a shipped bug.
 
 ### B4 — A damaged park loses the level's "completed" mark on reload
 
+> **FIXED** in `9545902` — `parse_line` now accepts `best == 0` (the value
+> `serialise` already writes for "no time") and maps it back to `nil`, so the
+> level reads as completed with no phantom `0.00` best. `0` cannot collide with
+> a real time: `PARK_HOLD` is 0.25 s. Pinned by
+> `a_damaged_park_survives_a_restart`.
+
 **`lib/progress.lua:88` (writer) vs `lib/progress.lua:41` (reader)**
 
 ```lua
