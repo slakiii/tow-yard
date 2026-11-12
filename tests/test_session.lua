@@ -34,6 +34,7 @@ local M = { order = {
     "par_cue_fires_once",
     "a_cone_costs_time_not_the_attempt",
     "damage_voids_the_attempt_but_not_the_park",
+    "the_grade_prices_both_cleanliness_and_speed",
     "the_yard_edge_is_a_wall",
 } }
 
@@ -389,6 +390,60 @@ function M.damage_voids_the_attempt_but_not_the_park()
     H.expect(park_here(s), "a damaged rig can still be parked")
     H.expect(s.final.damaged == true, "and the park reports the damage")
     H.expect(session.grade(s) == 0, "a damaged park earns no stars")
+end
+
+function M.the_grade_prices_both_cleanliness_and_speed()
+    -- The four corners of (clean, quick) at par 22, which is the rule the README
+    -- states: three for clean inside par, two for clean-or-quick, and the corner
+    -- that is neither earns one.
+    --
+    -- The old second tier was `bumps == 0 or time <= par * 1.5`, so a clip was
+    -- free as long as the run stayed under 1.5x par: one cone at 40 s scored the
+    -- same two pips as a clean 40 s, and the time penalty the sim charges never
+    -- reached the number the player actually reads.
+    local function graded(opts)
+        local lvl = straight_to_the_bay()
+        lvl.par = 22
+        if opts.cone then lvl.cones = { { x = 12, y = 0, r = 0.6, kind = "cone" } } end
+        local s = session.new(lvl)
+        if opts.cone then
+            local guard = 0
+            while s.cone_hits == 0 and guard < 2400 do
+                session.update(s, forward(), DT)
+                guard = guard + 1
+            end
+            H.expect(s.cone_hits == 1, "fixture: the rig must clip the cone")
+            H.expect(s.damaged ~= true, "fixture: a clip is not damage")
+        end
+        s.t = opts.t
+        H.expect(park_here(s), "fixture: the run must park")
+        return s, session.grade(s)
+    end
+
+    local s = graded({ t = 10 })
+    H.expect(s.final.bumps == 0 and s.final.time <= 22,
+        string.format("fixture: clean and fast, bumps %d at %.2f s", s.final.bumps, s.final.time))
+    H.expect(session.grade(s) == 3, "clean and inside par is three pips: " .. session.grade(s))
+
+    s = graded({ t = 40 })
+    H.expect(s.final.bumps == 0 and s.final.time > 22,
+        string.format("fixture: clean and slow, bumps %d at %.2f s", s.final.bumps, s.final.time))
+    H.expect(session.grade(s) == 2, "clean but slow is two pips: " .. session.grade(s))
+
+    s = graded({ t = 10, cone = true })
+    H.expect(s.final.bumps > 0 and s.final.time <= 22,
+        string.format("fixture: dirty and fast, bumps %d at %.2f s", s.final.bumps, s.final.time))
+    H.expect(session.grade(s) == 2, "quick but dirty is two pips: " .. session.grade(s))
+
+    -- Dirty and slow, but INSIDE the old 1.5x band: this is the only quadrant
+    -- that tells the two rules apart. At 1.8x par a dirty run already scored one
+    -- even under the old rule, so a corner out there would pass either way.
+    s = graded({ t = 25, cone = true })
+    H.expect(s.final.bumps > 0 and s.final.time > 22 and s.final.time <= 33,
+        string.format("fixture: dirty, outside par but inside the old 1.5x band: bumps %d at %.2f s",
+            s.final.bumps, s.final.time))
+    H.expect(session.grade(s) == 1,
+        "dirty and slow is one pip, so a cone always costs a star: " .. session.grade(s))
 end
 
 -- `bounds` sizes the camera and the drawing area, not collision. Before this

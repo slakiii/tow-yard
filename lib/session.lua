@@ -328,8 +328,18 @@ function M.grade(s)
     -- a void attempt earns nothing: the card must not strike the time through and
     -- then hand out a star for it
     if f.damaged then return 0 end
-    if f.bumps == 0 and f.time <= s.level.par then return 3 end
-    if f.bumps == 0 or f.time <= s.level.par * 1.5 then return 2 end
+    -- Two independent qualities, each priced at every tier: clean (nothing
+    -- clipped) and quick (inside par). The second tier used to OR them over a
+    -- 1.5x par band, so a run that clipped a cone scored the same two pips as a
+    -- clean one for as long as it stayed under 1.5x par -- the cone penalty the
+    -- sim charges never reached the number the player actually reads.
+    --
+    -- No magic band: "quick" is exactly par, which is the rule the README states
+    -- (three for clean inside par, two for clean-or-quick).
+    local clean = f.bumps == 0
+    local quick = f.time <= s.level.par
+    if clean and quick then return 3 end
+    if clean or quick then return 2 end
     return 1
 end
 

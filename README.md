@@ -23,7 +23,8 @@ Scoring: the clock you watch is the time that counts. A knocked cone costs
 attempt** — you still park and still see the time, but it cannot set a record,
 earn a pip or replace the ghost. The result card shows that time, the record it
 was measured against and the signed difference between them. Three pips are for
-a clean run inside par; two for clean-or-quick; a void attempt earns none.
+a clean run inside par; two for clean-or-quick; one for a run that is neither;
+a void attempt earns none.
 Every shipped level is audited for a zero-bump line, so "void" is never a dead
 end: there is always a clean line to drive.
 
