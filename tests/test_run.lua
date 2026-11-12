@@ -18,6 +18,7 @@ local M = { order = {
     "steering_at_standstill_counts_but_does_not_start_the_clock",
     "a_stored_run_loses_its_idle_prefix",
     "the_ghost_waits_for_the_player",
+    "the_ghost_stays_level_with_a_pre_roll",
     "a_run_round_trips_through_text",
     "encode_is_byte_stable",
     "a_run_stays_small",
@@ -98,6 +99,61 @@ local function three_frame_run()
     run.record(r, { steer = -0.75, throttle = 0.5, brake = 0, handbrake = false })
     r.time, r.bumps = 12.34, 0
     return r
+end
+
+function M.the_ghost_stays_level_with_a_pre_roll()
+    -- The regression: a run can hold frames the player's clock never counted.
+    -- run.recording() keeps the frames where the player only steered at a
+    -- standstill ("the wheel position is physics state"), but session.update()
+    -- only starts the clock on a pedal. So the run has a pre-roll the player's
+    -- step count does not, and advancing the ghost to the player's count leaves
+    -- it replaying its own pre-roll while the player has already driven --
+    -- measured at 3.6 m apart after a two-second setup.
+    --
+    -- The fix is to advance the ghost to ITS OWN clock start plus the player's
+    -- steps: the two clocks then run on the same beat.
+    local lvl = levels.get(1)
+
+    -- a player who sets the angle up before committing to the reverse
+    local ps, pr = session.new(lvl), run.new(lvl)
+    local setup = { steer = 0.4, throttle = 0, brake = 0, handbrake = false }
+    local drive = { steer = 0, throttle = 0, brake = 1, handbrake = false }
+    local hold = { steer = 0, throttle = 0, brake = 0, handbrake = true }
+    for _ = 1, 240 do
+        run.record(pr, setup); session.update(ps, setup, DT)
+    end
+    H.expect(ps.started == false, "fixture: the setup must not start the clock")
+    H.expect(#pr.frames == 240, "fixture: but it IS recorded: " .. #pr.frames)
+
+    local steps = 0
+    for _ = 1, 1200 do
+        local inp = (ps.rig.x > 24) and drive or hold
+        run.record(pr, inp)
+        session.update(ps, inp, DT)
+        if ps.started then steps = steps + 1 end
+        if ps.parked then break end
+    end
+    H.expect(#pr.frames > steps, "fixture: the run holds more frames than the clock counts")
+
+    -- the same drive, replayed as a ghost
+    local ghost = { run = pr, s = session.new(lvl), step = 0 }
+
+    -- the FIXED way: the ghost's own clock start plus the player's steps
+    run.advance_aligned(ghost, steps)
+    H.expect(math.abs(ghost.s.rig.x - ps.rig.x) < 0.01,
+        string.format("the ghost must sit where the player sits, got %.3f m apart",
+            math.abs(ghost.s.rig.x - ps.rig.x)))
+    H.expect(math.abs(ghost.s.rig.ph - ps.rig.ph) < 0.01,
+        string.format("with the same articulation, got %.3f deg apart",
+            math.deg(math.abs(ghost.s.rig.ph - ps.rig.ph))))
+
+    -- and the OLD way -- advancing to the raw player count -- is what this test
+    -- exists to prevent. It leaves the ghost replaying its own pre-roll.
+    local old = { run = pr, s = session.new(lvl), step = 0 }
+    run.advance(old, steps)
+    H.expect(math.abs(old.s.rig.x - ps.rig.x) > 0.5,
+        string.format("fixture: the raw count must misalign, got %.3f m",
+            math.abs(old.s.rig.x - ps.rig.x)))
 end
 
 function M.a_run_round_trips_through_text()

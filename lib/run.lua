@@ -94,8 +94,46 @@ function M.finish(run, s)
     return run
 end
 
+-- Where the run's own clock starts: the first frame that carries a pedal.
+--
+-- The recorder and the sim disagree about what "the first thing the player
+-- did" means, and the gap matters. run.recording() keeps a frame where the
+-- player only STEERED at a standstill (the wheel angle is physics state, so
+-- dropping it would make the replay diverge), but session.update() starts the
+-- clock only on a pedal. So a run can hold a pre-roll the player's step count
+-- never counted.
+--
+-- The ghost has to be advanced to ITS OWN clock start plus the player's steps,
+-- or it replays that pre-roll while the player has already driven -- measured
+-- at 3.6 m apart after a two-second setup. This function names the frame the
+-- clock starts on, so the shell can line the two clocks up.
+function M.clock_start(run)
+    for i, f in ipairs(run.frames or {}) do
+        if (f.throttle or 0) > 0 or (f.brake or 0) > 0 then return i end
+    end
+    -- no pedal in the run at all: the clock never started, so the pre-roll is
+    -- the whole run and the start is the first frame
+    return 1
+end
+
 function M.frames(run)
     return #run.frames
+end
+
+-- Advance a ghost so it runs on the SAME beat as the player.
+--
+-- The player's step count is post-start, so it has to be rebased onto the
+-- ghost's own clock: the two runs can have different pre-rolls, and advancing
+-- the ghost to the raw player count leaves it replaying its own pre-roll
+-- while the player has already driven (measured at 3.6 m apart after a
+-- two-second setup).
+--
+-- The shell and the test both go through here, so there is one place where the
+-- two clocks are lined up.
+function M.advance_aligned(ghost, steps)
+    if not ghost then return 0 end
+    local target = M.clock_start(ghost.run) - 1 + (steps or 0)
+    return M.advance(ghost, target)
 end
 
 -- The drive the run describes. The break on park is defence in depth: session

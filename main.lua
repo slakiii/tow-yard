@@ -228,9 +228,18 @@ end
 
 -- The ghost advances with the player's own step count, never with wall-clock
 -- time: pausing must not let it drive off.
+--
+-- The count is the player's POST-START steps, so it has to be rebased onto the
+-- ghost's own clock. A run can hold a pre-roll the player's step count never
+-- counted -- the frames where the player only steered at a standstill, kept
+-- because the wheel angle is physics state. Advancing the ghost to the raw
+-- player count therefore left it replaying its own pre-roll while the player
+-- had already driven: measured at 3.6 m apart after a two-second setup.
 local function advance_ghost()
     if not game.ghost then return end
-    run.advance(game.ghost, game.steps)
+    -- the ghost's pre-roll is not the player's: rebase onto the ghost's own
+    -- clock start so both lines advance on the same beat
+    run.advance_aligned(game.ghost, game.steps)
 end
 
 -- The model is rebuilt on entry so the marks are what the store says now: a park
