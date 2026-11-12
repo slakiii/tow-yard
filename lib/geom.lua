@@ -88,6 +88,17 @@ function M.poly_in_poly(inner, outer)
     return true
 end
 
+-- Is the whole polygon inside the axis-aligned rectangle? Used to treat a
+-- level's `bounds` as a real wall: `bounds` otherwise only sizes the camera, so
+-- the rig drives straight out of the world with nothing to stop it.
+function M.poly_in_rect(poly, x0, y0, x1, y1)
+    for i = 1, #poly do
+        local x, y = poly[i][1], poly[i][2]
+        if x < x0 or x > x1 or y < y0 or y > y1 then return false end
+    end
+    return true
+end
+
 local function seg_dist2(px, py, ax, ay, bx, by)
     local vx, vy = bx - ax, by - ay
     local wx, wy = px - ax, py - ay

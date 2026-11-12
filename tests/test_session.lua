@@ -6,6 +6,7 @@ local H = require("tests.helper")
 local session = require("lib.session")
 local fixtures = require("tests.fixtures")
 local rig = require("lib.rig")
+local geom = require("lib.geom")
 
 local M = { order = {
     "clock_waits_for_input",
@@ -33,6 +34,7 @@ local M = { order = {
     "par_cue_fires_once",
     "a_cone_costs_time_not_the_attempt",
     "damage_voids_the_attempt_but_not_the_park",
+    "the_yard_edge_is_a_wall",
 } }
 
 local DT = 1 / 120
@@ -387,6 +389,45 @@ function M.damage_voids_the_attempt_but_not_the_park()
     H.expect(park_here(s), "a damaged rig can still be parked")
     H.expect(s.final.damaged == true, "and the park reports the damage")
     H.expect(session.grade(s) == 0, "a damaged park earns no stars")
+end
+
+-- `bounds` sizes the camera and the drawing area, not collision. Before this
+-- rule every shipped level let a straight run drive clean out of the world with
+-- zero bumps (measured: x = 56.6 against a x1 of 60 on six levels, x = 3.4 on
+-- level 3) -- no wall, no bump, the rig simply kept simulating off-screen. The
+-- yard edge is now a wall, so a player cannot leave and an automated approach
+-- runs into an obstacle instead of into the void.
+function M.the_yard_edge_is_a_wall()
+    local levels = require("lib.levels")
+    for i = 1, #levels.ALL do
+        local lvl = levels.get(i)
+        local b = lvl.bounds
+        for _, gear in ipairs({ "throttle", "brake" }) do
+            local s = session.new(lvl)
+            local inp = { steer = 0, throttle = 0, brake = 0, handbrake = false }
+            inp[gear] = 1
+            -- 30 s of straight driving is ~330 m at the forward cap: far more
+            -- than the yard is deep, so it either stops or leaves.
+            local escaped = false
+            for _ = 1, 30 * 120 do
+                session.update(s, inp, DT)
+                local car = rig.car_poly(s.rig)
+                local van = rig.caravan_poly(s.rig)
+                if not (geom.poly_in_rect(car, b.x0, b.y0, b.x1, b.y1)
+                        and geom.poly_in_rect(van, b.x0, b.y0, b.x1, b.y1)) then
+                    escaped = true
+                    break
+                end
+            end
+            H.expect(not escaped,
+                string.format("level %d (%s) must not let the rig leave the bounds on %s " ..
+                              "(rig at %.1f,%.1f, bounds [%g,%g]-[%g,%g])",
+                              i, lvl.name, gear, s.rig.x, s.rig.y, b.x0, b.y0, b.x1, b.y1))
+            H.expect(s.bumps > 0,
+                string.format("level %d must count the edge as a bump on %s, not glide out",
+                              i, gear))
+        end
+    end
 end
 
 return M

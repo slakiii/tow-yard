@@ -249,6 +249,18 @@ function M.update(s, input, dt)
         end
     end
 
+    -- The yard's edge is a wall. `bounds` only sizes the camera and the
+    -- drawing area, so without this the rig drives straight out of the world
+    -- with nothing to stop it -- measured: every shipped level let a straight
+    -- run reach x = 56.6 (or 3.4 on level 3) with zero bumps. Reported as a
+    -- wall contact so the sound and the result card agree with the cause.
+    local b = s.level.bounds
+    if b and (not geom.poly_in_rect(car, b.x0, b.y0, b.x1, b.y1)
+              or not geom.poly_in_rect(van, b.x0, b.y0, b.x1, b.y1)) then
+        revert(s, "wall")
+        return s
+    end
+
     for _, c in ipairs(s.cones) do
         if not c.hit and (geom.circle_overlap_poly(c.x, c.y, c.r, car)
             or geom.circle_overlap_poly(c.x, c.y, c.r, van)) then
